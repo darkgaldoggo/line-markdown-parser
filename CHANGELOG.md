@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 — 2026-10-18
+
+- Publish distributions to PyPI with Trusted Publishing and update installation instructions.
+
 ## 0.1.1 — 2026-10-18
 
 - Avoid excessive parsing time for unfinished links and emphasis.

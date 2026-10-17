@@ -36,4 +36,6 @@ Required CI checks must pass before merging. Ordinary changes do not need a vers
 
 1. Merge a release pull request with matching versions in `pyproject.toml` and `line_markdown_parser/__init__.py` and a dated changelog entry.
 2. After CI passes, create an annotated `vX.Y.Z` tag on that commit in `main`.
-3. The release workflow validates and builds the package, then publishes a GitHub Release with wheel and source distribution assets. Verify the assets and installation instructions.
+3. The release workflow validates and builds the package, publishes it to PyPI using Trusted Publishing, and attaches the same wheel and source distribution to a GitHub Release. Verify both downloads and installation from PyPI.
+
+Publishing requires a PyPI trusted publisher for this repository's `release.yml` workflow and the `pypi` GitHub environment, restricted to `v*` tags. No PyPI API token is needed. If a release fails, check which files reached PyPI before retrying. Rerun only failed jobs after resolving the cause; do not replace an existing version.
