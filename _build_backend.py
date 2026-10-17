@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import os
+import stat
 import tarfile
 import tempfile
 from pathlib import Path
@@ -21,6 +22,7 @@ prepare_metadata_for_build_editable = _backend.prepare_metadata_for_build_editab
 
 def _normalize_sdist(path: Path) -> None:
     """Remove builder account names, numeric IDs, and local archive timestamps."""
+    mode = stat.S_IMODE(path.stat().st_mode)
     descriptor, temporary = tempfile.mkstemp(suffix=".tar.gz", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as output:
@@ -44,6 +46,7 @@ def _normalize_sdist(path: Path) -> None:
                         target.addfile(member, payload)
                         if payload is not None:
                             payload.close()
+        os.chmod(temporary, mode)
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):

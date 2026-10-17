@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Avoid excessive parsing time for unfinished links and emphasis.
+- Preserve inline code, punctuation-only text, and URL delimiters; reject malformed action URLs.
+- Improve internal-URL checks, archive error reporting, and source-distribution file permissions.
 - Clarify alpha status and simplify usage and contribution guides.
 
 ## 0.1.0 — 2026-10-18

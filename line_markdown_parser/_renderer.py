@@ -2,6 +2,8 @@
 
 import re
 import urllib.parse
+from bisect import bisect_left
+from collections.abc import Callable
 from typing import Any
 
 LINE_ACTION_URI_MAX_LENGTH = 1000
@@ -41,10 +43,60 @@ _INLINE_DELIMITERS: tuple[tuple[str, dict[str, bool]], ...] = (
     ("_", {"italic": True}),
 )
 _CORE_URL_PATTERN = "https?:\\/\\/[\\w\\-\\.~:\\/?#[\\]@!$&\\'\\(\\)\\*\\+,;=%.]+"
-_MARKDOWN_DESTINATION_PATTERN = "(?:<[^>\\n]+>|(?:[^\\s()<>]+|\\([^\\s()<>]*\\))+)"
+_MARKDOWN_DESTINATION_PATTERN = "(?:<[^>\\n]+>|(?:[^\\s()<>]|\\([^\\s()<>]*\\))+)"
 _LINK_PATTERN = re.compile(
-    f"(?P<markdown_match>\\[(?P<md_text>[^\\]]*)\\]\\(\\s*(?P<md_url>{_MARKDOWN_DESTINATION_PATTERN})\\s*\\))|(?P<autolink_match><(?P<auto_url>{_CORE_URL_PATTERN})>)|(?P<plain_match>(?P<plain_url>{_CORE_URL_PATTERN}))"
+    f"(?P<markdown_match>\\[(?P<md_text>[^\\[\\]]*)\\]\\(\\s*(?P<md_url>{_MARKDOWN_DESTINATION_PATTERN})\\s*\\))|(?P<autolink_match><(?P<auto_url>{_CORE_URL_PATTERN})>)|(?P<plain_match>(?P<plain_url>{_CORE_URL_PATTERN}))"
 )
+
+
+def _transform_outside_inline_code(
+    text: str, transform: Callable[[str], str], *, normalize_html_code: bool = False
+) -> str:
+    """コードを一時的に保護し、その外側だけに文字列置換を適用する。"""
+    ranges = [
+        (start, end, text[start:end]) for start, end, _ in _iter_inline_code_spans(text)
+    ]
+    opening_pattern = re.compile(r"<code\b", re.IGNORECASE)
+    closing_pattern = re.compile(r"</code>", re.IGNORECASE)
+    cursor = 0
+    while opening := opening_pattern.search(text, cursor):
+        tag_end = text.find(">", opening.end())
+        if tag_end == -1:
+            break
+        closing = closing_pattern.search(text, tag_end + 1)
+        if closing is None:
+            break
+        replacement = text[opening.start() : closing.end()]
+        if normalize_html_code:
+            body = text[tag_end + 1 : closing.start()]
+            delimiter = "`" * (
+                max((len(run) for run in re.findall(r"`+", body)), default=0) + 1
+            )
+            replacement = f"{delimiter} {body} {delimiter}"
+        ranges.append((opening.start(), closing.end(), replacement))
+        cursor = closing.end()
+    if not ranges:
+        return transform(text)
+
+    prefix = "\x00code:"
+    while prefix in text:
+        prefix += ":"
+    fragments = []
+    protected = []
+    cursor = 0
+    for start, end, replacement in sorted(ranges):
+        if start < cursor:
+            continue
+        fragments.extend((text[cursor:start], f"{prefix}{len(protected)}\x00"))
+        protected.append(replacement)
+        cursor = end
+    fragments.append(text[cursor:])
+    transformed = transform("".join(fragments))
+    return re.sub(
+        re.escape(prefix) + r"(\d+)\x00",
+        lambda match: protected[int(match.group(1))],
+        transformed,
+    )
 
 
 def _normalize_inline_html_lite(text: str) -> str:
@@ -58,20 +110,22 @@ def _normalize_inline_html_lite(text: str) -> str:
         ("i", "*", "*"),
         ("s", "~~", "~~"),
         ("del", "~~", "~~"),
-        ("code", "`", "`"),
     )
-    normalized = text
-    for tag, opener, closer in tag_replacements:
-        pattern = f"<{tag}\\b[^>]*>([\\s\\S]*?)</{tag}>"
-        normalized = re.sub(
-            pattern,
-            lambda match, prefix=opener, suffix=closer: (
-                f"{prefix}{match.group(1)}{suffix}"
-            ),
-            normalized,
-            flags=re.IGNORECASE,
-        )
-    return normalized
+
+    def replace_tags(source: str) -> str:
+        for tag, opener, closer in tag_replacements:
+            pattern = f"<{tag}\\b[^>]*>([\\s\\S]*?)</{tag}>"
+            source = re.sub(
+                pattern,
+                lambda match, prefix=opener, suffix=closer: (
+                    f"{prefix}{match.group(1)}{suffix}"
+                ),
+                source,
+                flags=re.IGNORECASE,
+            )
+        return source
+
+    return _transform_outside_inline_code(text, replace_tags, normalize_html_code=True)
 
 
 def _is_escaped(text: str, index: int) -> bool:
@@ -117,19 +171,37 @@ def _find_closing_inline_delimiter(
     start: int,
     delimiter: str,
     code_ranges: list[tuple[int, int]] | None = None,
+    *,
+    cache: dict[str, list[int]] | None = None,
 ) -> int | None:
-    cursor = start
-    while cursor < len(text):
-        found_at = text.find(delimiter, cursor)
-        if found_at == -1:
-            return None
-        if code_ranges and _position_inside_ranges(found_at, code_ranges):
+    """同じ本文・保護範囲の閉じ記号を共有し、未閉じ記号ごとの再探索を避ける。"""
+    if cache is None:
+        cache = {}
+    if delimiter not in cache:
+        positions: list[int] = []
+        protected = sorted(code_ranges or [])
+        range_index = 0
+        cursor = 0
+        while cursor < len(text):
+            found_at = text.find(delimiter, cursor)
+            if found_at == -1:
+                break
+            while (
+                range_index < len(protected) and protected[range_index][1] <= found_at
+            ):
+                range_index += 1
+            inside_protected = (
+                range_index < len(protected) and protected[range_index][0] <= found_at
+            )
+            if not inside_protected and _can_close_inline_delimiter(
+                text, found_at, delimiter
+            ):
+                positions.append(found_at)
             cursor = found_at + 1
-            continue
-        if _can_close_inline_delimiter(text, found_at, delimiter):
-            return found_at
-        cursor = found_at + 1
-    return None
+        cache[delimiter] = positions
+    positions = cache[delimiter]
+    position_index = bisect_left(positions, start)
+    return positions[position_index] if position_index < len(positions) else None
 
 
 def _span_for_text(text: str, style: dict[str, bool]) -> dict | None:
@@ -212,6 +284,7 @@ def _position_inside_ranges(position: int, ranges: list[tuple[int, int]]) -> boo
 
 def _find_unclosed_inline_delimiter(text: str) -> tuple[str, int] | None:
     code_ranges = _inline_code_span_ranges(text)
+    closing_cache: dict[str, list[int]] = {}
     index = 0
     while index < len(text):
         if _position_inside_ranges(index, code_ranges):
@@ -225,7 +298,7 @@ def _find_unclosed_inline_delimiter(text: str) -> tuple[str, int] | None:
                 continue
             inner_start = index + len(delimiter)
             closing_index = _find_closing_inline_delimiter(
-                text, inner_start, delimiter, code_ranges
+                text, inner_start, delimiter, code_ranges, cache=closing_cache
             )
             if closing_index is None:
                 return (delimiter, index)
@@ -297,6 +370,7 @@ def _parse_inline_styled_spans(
     link_ranges = _inline_link_ranges(text, code_ranges) if parse_links else []
     link_end_by_start = dict(link_ranges)
     protected_ranges = code_ranges + link_ranges
+    closing_cache: dict[str, list[int]] = {}
 
     def flush_text() -> None:
         if buffer:
@@ -341,7 +415,7 @@ def _parse_inline_styled_spans(
                 continue
             inner_start = index + len(delimiter)
             closing_index = _find_closing_inline_delimiter(
-                text, inner_start, delimiter, protected_ranges
+                text, inner_start, delimiter, protected_ranges, cache=closing_cache
             )
             if closing_index is None:
                 continue
@@ -421,8 +495,10 @@ def process_line_to_flex_components(line):
                     break
                 spans.pop()
         visible = "".join(span["text"] for span in spans)
-        if visible.strip("。、,・/／|｜ \t\n") or any(
-            span.get("color") == INLINE_CODE_COLOR for span in spans
+        if visible.strip() and (
+            not (before_link or after_link)
+            or visible.strip("。、,・/／|｜ \t\n")
+            or any(span.get("color") == INLINE_CODE_COLOR for span in spans)
         ):
             components.append(
                 {
@@ -581,26 +657,33 @@ def _process_line_to_flex_components_without_code_spans(
                 last_index = match_end
                 continue
             try:
-                parsed_uri = urllib.parse.urlparse(action_uri)
-                if not parsed_uri.scheme or not parsed_uri.netloc:
+                parsed_uri = urllib.parse.urlsplit(action_uri)
+                if not parsed_uri.scheme or not parsed_uri.hostname:
                     raise ValueError("Invalid URL structure (missing scheme or netloc)")
                 valid_hostname_pattern = "^[a-zA-Z0-9\\.\\-:]+$"
                 if not re.fullmatch(valid_hostname_pattern, parsed_uri.netloc):
                     raise ValueError(
                         f"Invalid hostname characters in netloc: {parsed_uri.netloc}"
                     )
-                path_with_params = parsed_uri.path
-                if parsed_uri.params:
-                    path_with_params += ";" + parsed_uri.params
-                sanitized_path = urllib.parse.quote(path_with_params, safe="/:;%")
-                sanitized_query = urllib.parse.quote(parsed_uri.query, safe="=&%+")
-                sanitized_fragment = urllib.parse.quote(parsed_uri.fragment, safe="%")
+                # Accessing port validates both its numeric form and range.
+                _ = parsed_uri.port
+                if re.search(r"%(?![0-9A-Fa-f]{2})", action_uri):
+                    raise ValueError("Invalid percent escape")
+                # RFC 3986 pchar, plus the separators allowed in each component.
+                path_safe = "/:@!$&'()*+,;=%"
+                sanitized_path = urllib.parse.quote(parsed_uri.path, safe=path_safe)
+                sanitized_query = urllib.parse.quote(
+                    parsed_uri.query, safe=path_safe + "?"
+                )
+                sanitized_fragment = urllib.parse.quote(
+                    parsed_uri.fragment, safe=path_safe + "?"
+                )
                 sanitized_uri = (
                     f"{parsed_uri.scheme}://{parsed_uri.netloc}{sanitized_path}"
                 )
-                if sanitized_query:
+                if "?" in action_uri.partition("#")[0]:
                     sanitized_uri += f"?{sanitized_query}"
-                if sanitized_fragment:
+                if "#" in action_uri:
                     sanitized_uri += f"#{sanitized_fragment}"
                 action_uri = sanitized_uri
             except ValueError:
@@ -780,27 +863,36 @@ def _allows_multiline_inline_continuation(line: str) -> bool:
 
 
 def _collect_multiline_inline_block(
-    lines: list[str], start_index: int
+    lines: list[str], start_index: int, closing_line_cache: dict[str, list[int | None]]
 ) -> tuple[str, int] | None:
     start_line = lines[start_index].strip()
     opener = _find_unclosed_inline_delimiter(start_line)
     if opener is None:
         return None
     delimiter, opener_index = opener
-    collected = [start_line]
-    next_index = start_index + 1
-    while next_index < len(lines):
-        if not _allows_multiline_inline_continuation(lines[next_index]):
-            break
-        collected.append(lines[next_index].strip())
-        joined = "\n".join(collected)
-        closing_index = _find_closing_inline_delimiter(
-            joined, opener_index + len(delimiter), delimiter
+    if (
+        _find_closing_inline_delimiter(
+            start_line, opener_index + len(delimiter), delimiter
         )
-        if closing_index is not None and "\n" in joined[opener_index:closing_index]:
-            return (joined, next_index + 1)
-        next_index += 1
-    return None
+        is not None
+    ):
+        return None
+    if delimiter not in closing_line_cache:
+        closing_lines: list[int | None] = [None] * len(lines)
+        next_closing_line: int | None = None
+        for index in range(len(lines) - 1, -1, -1):
+            closing_lines[index] = next_closing_line
+            line = lines[index]
+            if not _allows_multiline_inline_continuation(line):
+                next_closing_line = None
+            elif _find_closing_inline_delimiter(line.strip(), 0, delimiter) is not None:
+                next_closing_line = index
+        closing_line_cache[delimiter] = closing_lines
+    closing_line = closing_line_cache[delimiter][start_index]
+    if closing_line is None:
+        return None
+    joined = "\n".join(line.strip() for line in lines[start_index : closing_line + 1])
+    return (joined, closing_line + 1)
 
 
 def process_text_block_to_flex_components(text_block: str) -> list[dict[str, Any]]:
@@ -1096,8 +1188,9 @@ def parse_text_with_links(text):
             if component_to_add:
                 contents.append(component_to_add)
         else:
-            normalized_segment = re.sub(
-                "<br\\s*/?>", "\n", segment, flags=re.IGNORECASE
+            normalized_segment = _transform_outside_inline_code(
+                segment,
+                lambda source: re.sub("<br\\s*/?>", "\n", source, flags=re.IGNORECASE),
             )
             lines = normalized_segment.strip().split("\n")
             normalized_lines = []
@@ -1140,6 +1233,7 @@ def parse_text_with_links(text):
                 normalized_lines.append(raw_line)
                 prev_was_list = is_list_line
             lines = normalized_lines
+            closing_line_cache: dict[str, list[int | None]] = {}
             current_paragraph_components = []
 
             def add_paragraph_if_exists(components=current_paragraph_components):
@@ -1255,7 +1349,7 @@ def parse_text_with_links(text):
                 if is_marker_line:
                     add_paragraph_if_exists()
                     marker_multiline_block = _collect_multiline_inline_block(
-                        lines, line_index
+                        lines, line_index, closing_line_cache
                     )
                     if marker_multiline_block:
                         block_text, next_line_index = marker_multiline_block
@@ -1311,7 +1405,7 @@ def parse_text_with_links(text):
                         line_index += 1
                         continue
                     multiline_inline_block = _collect_multiline_inline_block(
-                        lines, line_index
+                        lines, line_index, closing_line_cache
                     )
                     if multiline_inline_block:
                         block_text, next_line_index = multiline_inline_block

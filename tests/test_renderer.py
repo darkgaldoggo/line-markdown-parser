@@ -1,6 +1,8 @@
 """Renderer regressions using synthetic content and reserved example domains."""
 
 import json
+import subprocess
+import sys
 
 import pytest
 
@@ -293,7 +295,7 @@ def test_multiline_link_emphasis_preserves_nested_label_code_and_uri():
     assert [
         node["action"]["uri"] for node in _walk(contents) if node.get("action")
     ] == [
-        "https://example.com/a%2A%2Ab?q=c%26d+e",
+        "https://example.com/a**b?q=c%26d+e",
     ]
 
 
@@ -347,8 +349,8 @@ def test_link_bold_cleanup_preserves_escaped_markers_code_and_literal_uri():
     assert [
         node["action"]["uri"] for node in _walk(contents) if node.get("action")
     ] == [
-        "https://example.com/a%2A%2Ab",
-        "https://example.com/tail%2A%2A",
+        "https://example.com/a**b",
+        "https://example.com/tail**",
     ]
 
 
@@ -390,11 +392,11 @@ def test_markdown_link_destination_absorbs_parentheses_and_angle_brackets():
     actions = [node["action"]["uri"] for node in _walk(contents) if node.get("action")]
 
     assert actions == [
-        "https://example.com/path_%28test%29",
-        "https://example.com/search?q=%28test%29",
-        "https://example.com/a_%28b%29_c",
-        "https://example.com/path_%28angle%29",
-        "https://example.com/search?q=%28angle%29&lang=ja",
+        "https://example.com/path_(test)",
+        "https://example.com/search?q=(test)",
+        "https://example.com/a_(b)_c",
+        "https://example.com/path_(angle)",
+        "https://example.com/search?q=(angle)&lang=ja",
     ]
     assert "](" not in visible
     assert "<https://" not in visible
@@ -618,3 +620,135 @@ def test_code_block_preserves_html_and_url_as_literal_text():
 
     assert any(node.get("text") == source for node in _text_components(contents))
     assert not any(node.get("action") for node in _walk(contents))
+
+
+@pytest.mark.parametrize("literal", ["<b>x</b>", "<br>", "<BR />", "<code>x</code>"])
+def test_inline_code_preserves_html_literals(literal):
+    contents = build_flex_contents(f"before `{literal}` after")
+
+    assert _span_with_text(contents, literal)["color"] == "#C46A00"
+    assert _all_visible_text(contents) == f"before {literal} after"
+
+
+def test_html_emphasis_wraps_multiple_literal_code_spans():
+    contents = build_flex_contents(
+        "<strong>before `<b>x</b>` between `<br>` after</strong><br>next"
+    )
+
+    for literal in ("<b>x</b>", "<br>"):
+        span = _span_with_text(contents, literal)
+        assert span["color"] == "#C46A00"
+        assert span["weight"] == "bold"
+    assert _span_with_text(contents, "next").get("weight") is None
+
+
+@pytest.mark.parametrize("literal", ["<b>x</b>", "<br>", "`x` <b>y</b>"])
+def test_html_code_preserves_its_contents(literal):
+    contents = build_flex_contents(f"<strong><code>{literal}</code></strong>")
+
+    span = _span_with_text(contents, literal)
+    assert span["color"] == "#C46A00"
+    assert span["weight"] == "bold"
+
+
+def test_escaped_backticks_do_not_protect_html_from_normalization():
+    contents = build_flex_contents(r"\`<b>x</b>\`")
+
+    assert _all_visible_text(contents) == "`x`"
+    assert _span_with_text(contents, "x")["weight"] == "bold"
+    assert not any(span.get("color") == "#C46A00" for span in _spans(contents))
+
+
+@pytest.mark.parametrize(
+    "destination",
+    [
+        "https://:",
+        "https://:443",
+        "https://example.com:abc",
+        "https://example.com:99999",
+        "https://example.com/%",
+        "https://example.com/%2",
+        "https://example.com/?q=%GG",
+    ],
+)
+def test_malformed_http_url_stays_visible_without_an_action(destination):
+    source = f"[label]({destination})"
+    contents = build_flex_contents(source)
+
+    assert _all_visible_text(contents) == source
+    assert not any(node.get("action") for node in _walk(contents))
+
+
+@pytest.mark.parametrize(
+    "destination",
+    [
+        "https://example.com:443/document",
+        "https://example.com/a@b,c;d:e!f$g&h'i(j)*k+l=m",
+        "https://example.com/?path=/a:b@c,d&next=?x=1!$'()*+;",
+        "https://example.com/#/route?id=1&next=a@b,c!$'()*+;",
+        "https://example.com/a%2fb?q=%26#%3f",
+        "https://example.com/path?",
+        "https://example.com/path#",
+        "https://example.com/path?#",
+    ],
+)
+def test_uri_components_keep_reserved_characters_and_existing_escapes(destination):
+    contents = build_flex_contents(f"[label](<{destination}>)")
+
+    assert [
+        node["action"]["uri"] for node in _walk(contents) if node.get("action")
+    ] == [destination]
+
+
+def test_non_ascii_uri_components_are_encoded_without_changing_delimiters():
+    contents = build_flex_contents(
+        "[label](https://example.com/検索?q=日本語#/項目?id=1)"
+    )
+
+    assert [
+        node["action"]["uri"] for node in _walk(contents) if node.get("action")
+    ] == [
+        "https://example.com/%E6%A4%9C%E7%B4%A2?q=%E6%97%A5%E6%9C%AC%E8%AA%9E"
+        "#/%E9%A0%85%E7%9B%AE?id=1"
+    ]
+
+
+@pytest.mark.parametrize("punctuation", ["、", "/", "|", "／", "。"])
+def test_punctuation_only_paragraphs_and_list_items_remain_visible(punctuation):
+    paragraph = build_flex_contents(f"A\n\n{punctuation}\n\nB")
+    numbered_list = build_flex_contents(f"1. {punctuation}\n2. Normal")
+
+    assert punctuation in _all_visible_text(paragraph)
+    assert f"1. {punctuation}" in _all_visible_text(numbered_list)
+    assert "2. Normal" in _all_visible_text(numbered_list)
+
+
+def test_link_separator_cleanup_does_not_remove_punctuation_in_code():
+    contents = build_flex_contents(
+        "[A](https://example.com) / [B](https://example.org) `|`"
+    )
+
+    assert "/" not in _all_visible_text(contents)
+    assert _span_with_text(contents, "|")["color"] == "#C46A00"
+
+
+def test_many_unclosed_html_code_tags_finish_within_timeout():
+    script = """
+from line_markdown_parser import build_flex_contents
+
+for prefix, opening in (
+    ("", "<code>\\n"),
+    ("<code>valid</code>\\n", "<code>\\n"),
+    ("", "<code "),
+):
+    assert build_flex_contents(prefix + opening * 20_000)
+print("ok")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=15,
+    )
+    assert result.stdout.strip() == "ok"

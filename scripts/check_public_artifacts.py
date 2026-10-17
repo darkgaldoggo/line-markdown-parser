@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tarfile
 import zipfile
+import zlib
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from urllib.parse import urlsplit
@@ -137,6 +138,7 @@ EMAIL_PATTERN = re.compile(
     r"[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?\.[A-Za-z]{2,63}\b"
 )
 URL_PATTERN = re.compile(r"\bhttps?://[^\s<>\"'`]+")
+HOST_BOUNDARY_PATTERN = re.compile(r"[(){}\[\],;!?、。；，！？（）「」『』【】]")
 FILE_URL_PATTERN = re.compile("file:" + r"//[^\s<>\"'`]+", re.IGNORECASE)
 # One published regression uses this deliberately fictitious attachment URI.
 SYNTHETIC_FILE_URLS = frozenset({"file:" + "///tmp/example.txt"})
@@ -232,7 +234,7 @@ def scan_content(filename: str, content: bytes) -> list[Finding]:
         return [Finding(filename, 0, "binary-content")]
 
     findings = set()
-    for number, line in enumerate(text.splitlines(), 1):
+    for number, line in enumerate(text.split("\n"), 1):
         for rule, pattern in CONTENT_RULES:
             if pattern.search(line):
                 findings.add(Finding(filename, number, rule))
@@ -244,12 +246,24 @@ def scan_content(filename: str, content: bytes) -> list[Finding]:
             if match.group() not in SYNTHETIC_FILE_URLS:
                 findings.add(Finding(filename, number, "local-file-url"))
         for match in URL_PATTERN.finditer(line):
+            authority = re.split(
+                r"[/?#]", match.group().partition("://")[2], maxsplit=1
+            )[0]
+            # Strip prose after the host without splitting reserved userinfo characters.
+            host = authority.rsplit("@", 1)[-1]
+            if host.startswith("["):
+                end = host.find("]")
+                if end >= 0:
+                    host = host[: end + 1]
+            else:
+                host = HOST_BOUNDARY_PATTERN.split(host, maxsplit=1)[0]
             try:
-                hostname = urlsplit(match.group()).hostname
+                hostname = urlsplit("https://" + host).hostname
             except ValueError:
                 continue
             if not hostname:
                 continue
+            hostname = hostname.rstrip(".")
             if hostname.lower() == "localhost" or hostname.lower().endswith(
                 (".localhost", ".local", ".internal")
             ):
@@ -448,6 +462,7 @@ def check_distributions(directory: Path) -> list[Finding]:
             EOFError,
             tarfile.TarError,
             zipfile.BadZipFile,
+            zlib.error,
         ):
             findings.append(Finding(path.name, 0, "unreadable-distribution"))
     return sorted(set(findings))

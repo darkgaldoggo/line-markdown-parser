@@ -66,7 +66,7 @@ All text arguments must be strings; other types raise `TypeError`. Every public 
 
 Full CommonMark conformance, HTML rendering, arbitrary nesting, and exact browser-style layout are outside the scope. Malformed input or unusual fences may render as ordinary text or lose formatting. Table alignment depends on client fonts and display width.
 
-Only `http` and `https` receive [URI actions](https://developers.line.biz/en/reference/messaging-api/#uri-action). Unsupported schemes retain their labels without an action. Malformed HTTP(S) destinations and URLs exceeding the action URI length limit remain text. Destinations are not verified.
+Only `http` and `https` receive [URI actions](https://developers.line.biz/en/reference/messaging-api/#uri-action). Unsupported schemes retain their labels without an action. Malformed HTTP(S) destinations and URLs exceeding the action URI length limit remain text. Existing percent escapes and URL delimiters are preserved when encoding destinations. Destinations are not verified.
 
 ## Integration
 

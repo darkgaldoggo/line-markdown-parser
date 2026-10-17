@@ -1,9 +1,11 @@
 """Publication checks exercised with synthetic values, never real credentials."""
 
 import io
+import struct
 import subprocess
 import tarfile
 import zipfile
+import zlib
 from pathlib import Path
 
 import pytest
@@ -91,6 +93,65 @@ def test_private_content_detection_reports_rule_and_line(value, rule):
 
     assert checker.Finding("README.md", 2, rule) in findings
     assert all(not hasattr(finding, "matched_text") for finding in findings)
+
+
+@pytest.mark.parametrize(
+    "host, rule",
+    [
+        ("localhost", "internal-host-url"),
+        ("service.internal", "internal-host-url"),
+        ("service.local", "internal-host-url"),
+        ("127.0.0.1", "private-ip-url"),
+        ("10.1.2.3", "private-ip-url"),
+        ("[::1]", "private-ip-url"),
+    ],
+)
+@pytest.mark.parametrize(
+    "template",
+    ["[label]({})", "({}).", "[{}]", "{}、次", "{}。次", "{}, next", "{}; next"],
+)
+def test_private_url_hosts_are_detected_at_markdown_and_prose_boundaries(
+    host, rule, template
+):
+    content = template.format("http:" + "//" + host)
+
+    assert checker.scan_content("README.md", content.encode()) == [
+        checker.Finding("README.md", 1, rule)
+    ]
+
+
+@pytest.mark.parametrize("host", ["example.com", "192.0.2.1", "[2001:db8::1]"])
+def test_public_url_hosts_remain_allowed_with_brackets_and_path_parentheses(host):
+    content = "[label](https:" + "//" + host + "/a(b))。"
+
+    assert checker.scan_content("README.md", content.encode()) == []
+
+
+@pytest.mark.parametrize(
+    "userinfo", ["user!name", "user,name", "user;name", "user(name)"]
+)
+@pytest.mark.parametrize(
+    "host, rule", [("localhost", "internal-host-url"), ("[::1]", "private-ip-url")]
+)
+def test_private_url_detection_preserves_reserved_userinfo_characters(
+    userinfo, host, rule
+):
+    content = "[label](https:" + "//" + userinfo + "@" + host + "/a(b))"
+
+    assert checker.scan_content("README.md", content.encode()) == [
+        checker.Finding("README.md", 1, rule)
+    ]
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("separator", ["\v", "\f", "\x1c", "\x85", "\u2028", "\u2029"])
+def test_reported_line_numbers_count_lf_newlines(newline, separator):
+    secret = "ghp_" + "x" * 36
+    content = f"first{separator}still first{newline}{separator}{secret}{newline}"
+
+    assert checker.scan_content("README.md", content.encode()) == [
+        checker.Finding("README.md", 2, "github-token")
+    ]
 
 
 def test_reserved_examples_and_public_urls_are_allowed():
@@ -321,6 +382,31 @@ def test_empty_missing_or_corrupt_distribution_input_fails(tmp_path):
     )
     (tmp_path / "line_markdown_parser-0.1.0-py3-none-any.whl").write_bytes(b"broken")
     assert checker.check_distributions(tmp_path)[0].rule == "unreadable-distribution"
+
+
+def test_corrupt_deflate_is_reported_and_other_distributions_are_checked(tmp_path):
+    path = tmp_path / "line_markdown_parser-0.1.0-py3-none-any.whl"
+    name = "line_markdown_parser/__init__.py"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(name, "Public package source\n")
+    with zipfile.ZipFile(path) as archive:
+        member = archive.getinfo(name)
+    data = bytearray(path.read_bytes())
+    name_size, extra_size = struct.unpack_from("<HH", data, member.header_offset + 26)
+    start = member.header_offset + 30 + name_size + extra_size
+    # BTYPE=3 is reserved and therefore invalid in a deflate stream.
+    data[start] = 0x07
+    path.write_bytes(data)
+    with zipfile.ZipFile(path) as archive, pytest.raises(zlib.error):
+        archive.read(name)
+    other = _sdist(tmp_path, {"README.md": "ghp_" + "x" * 36})
+
+    assert checker.check_distributions(tmp_path) == [
+        checker.Finding(path.name, 0, "unreadable-distribution"),
+        checker.Finding(
+            other.name + "!line_markdown_parser-0.1.0/README.md", 1, "github-token"
+        ),
+    ]
 
 
 def test_archive_size_limit_is_enforced_before_reading_content(tmp_path, monkeypatch):
