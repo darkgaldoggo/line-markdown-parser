@@ -123,9 +123,14 @@ def _transform_outside_inline_code(
     ]
     code_starts = [start for start, _, _ in ranges]
 
-    def code_end_at(position: int) -> int | None:
+    def code_end_at(position: int, minimum_start: int) -> int | None:
         index = bisect_right(code_starts, position) - 1
-        if index >= 0 and position < ranges[index][1]:
+        # 先に処理したHTML code内のバッククォートは、後続のタグを保護しない。
+        if (
+            index >= 0
+            and ranges[index][0] >= minimum_start
+            and position < ranges[index][1]
+        ):
             return ranges[index][1]
         return None
 
@@ -133,15 +138,13 @@ def _transform_outside_inline_code(
     closing_pattern = re.compile(r"</code>", re.IGNORECASE)
     cursor = 0
     while opening := opening_pattern.search(text, cursor):
-        if code_end := code_end_at(opening.start()):
+        if code_end := code_end_at(opening.start(), cursor):
             cursor = code_end
             continue
         tag_end = text.find(">", opening.end())
         if tag_end == -1:
             break
         closing = closing_pattern.search(text, tag_end + 1)
-        while closing is not None and (code_end := code_end_at(closing.start())):
-            closing = closing_pattern.search(text, code_end)
         if closing is None:
             break
         replacement = text[opening.start() : closing.end()]

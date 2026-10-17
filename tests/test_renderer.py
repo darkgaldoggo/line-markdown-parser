@@ -687,12 +687,26 @@ def test_html_code_tag_in_backticks_does_not_consume_the_next_code_span(literal)
     assert len(_text_components(contents)) == 1
 
 
-def test_html_code_closing_tag_in_backticks_stays_literal():
-    literal = "x `</code>` y<br>z"
-    contents = build_flex_contents(f"<code>{literal}</code>")
+@pytest.mark.parametrize(
+    "source,code_texts,visible",
+    [
+        ("<code>`</code> and <code>`</code>", ["`", "`"], "` and `"),
+        (
+            "<code>a ` b<br>c</code> and `d`",
+            ["a ` b<br>c", "d"],
+            "a ` b<br>c and d",
+        ),
+    ],
+)
+def test_backticks_in_html_code_do_not_capture_other_code_spans(
+    source, code_texts, visible
+):
+    contents = build_flex_contents(source)
 
-    assert _all_visible_text(contents) == literal
-    assert _span_with_text(contents, literal)["color"] == "#C46A00"
+    assert _all_visible_text(contents) == visible
+    assert [
+        span["text"] for span in _spans(contents) if span["color"] == "#C46A00"
+    ] == code_texts
     assert len(_text_components(contents)) == 1
 
 
