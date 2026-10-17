@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "_build_backend"
+backend-path = ["."]
+
+[project]
+name = "line-markdown-parser"
+version = "0.1.0"
+description = "Convert LLM Markdown into readable LINE Flex Messages without runtime dependencies."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "line-markdown-parser contributors"}]
+keywords = ["line", "markdown", "flex-message", "llm", "chatbot"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.11", "build>=1.2", "twine>=6"]
+
+[project.urls]
+Homepage = "https://github.com/darkgaldragon/line-markdown-parser"
+Source = "https://github.com/darkgaldragon/line-markdown-parser"
+Issues = "https://github.com/darkgaldragon/line-markdown-parser/issues"
+
+[tool.setuptools]
+packages = ["line_markdown_parser"]
+
+[tool.setuptools.package-data]
+line_markdown_parser = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]

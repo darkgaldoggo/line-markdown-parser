@@ -1,0 +1,12 @@
+include LICENSE README.md README-ja.md CHANGELOG.md
+include _build_backend.py
+include docs/spec.md
+recursive-include line_markdown_parser *.py py.typed
+prune tests
+prune scripts
+prune examples
+prune .github
+prune .private
+prune docs/_internal
+exclude CONTRIBUTING.md SECURITY.md
+global-exclude __pycache__ *.py[cod] .DS_Store
