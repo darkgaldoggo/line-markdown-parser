@@ -2,13 +2,19 @@
 
 import importlib.util
 import io
+import stat
 import sys
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 
-def test_sdist_owner_normalization_preserves_payload(tmp_path, monkeypatch):
+
+@pytest.mark.parametrize("mode", [0o644, 0o640, 0o600])
+def test_sdist_owner_normalization_preserves_payload_and_mode(
+    tmp_path, monkeypatch, mode
+):
     # Loading the privacy hook needs no real build environment in the unit suite.
     hooks = SimpleNamespace(
         **{
@@ -42,10 +48,13 @@ def test_sdist_owner_normalization_preserves_payload(tmp_path, monkeypatch):
         member.mtime = 123456
         member.pax_headers = {"uname": "synthetic-builder"}
         output.addfile(member, io.BytesIO(content))
+    archive.chmod(mode)
 
     module._normalize_sdist(archive)
+    assert stat.S_IMODE(archive.stat().st_mode) == mode
     first_build = archive.read_bytes()
     module._normalize_sdist(archive)
+    assert stat.S_IMODE(archive.stat().st_mode) == mode
     assert archive.read_bytes() == first_build
     with tarfile.open(archive) as result:
         member = result.getmember("package/source.py")
