@@ -1,6 +1,6 @@
 # API specification
 
-`line-markdown-parser` converts Markdown strings into LINE Flex Message dictionaries without runtime dependencies or network requests. The API below applies to version 0.1.2.
+`line-markdown-parser` converts Markdown strings into LINE Flex Message dictionaries without runtime dependencies or network requests. The API below applies to version 0.1.3.
 
 ## Functions
 
@@ -72,4 +72,4 @@ Only `http` and `https` receive [URI actions](https://developers.line.biz/en/ref
 
 The converter returns all messages without sending or truncating them. LINE [reply](https://developers.line.biz/en/reference/messaging-api/#send-reply-message) and [push](https://developers.line.biz/en/reference/messaging-api/#send-push-message) requests accept at most five messages. Applications handle batching, reply-token restrictions, authentication, recipients, and retries.
 
-Version 0.1.2 is covered by automated tests; live LINE delivery and client rendering have not been verified. Validate integrations using the [Flex Message Simulator](https://developers.line.biz/flex-simulator/), [message validation endpoints](https://developers.line.biz/en/reference/messaging-api/#message-objects), and target LINE clients.
+Version 0.1.3 is covered by automated tests; live LINE delivery and client rendering have not been verified. Validate integrations using the [Flex Message Simulator](https://developers.line.biz/flex-simulator/), [message validation endpoints](https://developers.line.biz/en/reference/messaging-api/#message-objects), and target LINE clients.
