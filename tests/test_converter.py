@@ -192,6 +192,16 @@ def test_link_label_containing_spaces_stays_intact_at_preferred_boundary():
     assert sum(link in part for part in parts) == 1
 
 
+@pytest.mark.parametrize("label", ["use `a[b`", "use `a]b`", r"use \[x\]"])
+def test_link_label_brackets_stay_intact_when_splitting(label):
+    link = f"[{label}](https://example.com)"
+    with pytest.raises(ValueError, match="intact link"):
+        split_long_text(link, max_length=20)
+
+    parts = split_long_text("Start " * 8 + link + " End" * 12, max_length=50)
+    assert sum(link in part for part in parts) == 1
+
+
 def test_intact_link_at_exact_byte_budget_can_be_split_from_following_text():
     link = "[guide](https://example.com/document)"
     text = link + " suffix" * 40

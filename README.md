@@ -11,7 +11,7 @@ Headings, paragraphs, lists, quotes, code, and links receive a chat-friendly lay
 Requires Python 3.10 or later. Install the release from GitHub; it is not available on PyPI.
 
 ```bash
-python -m pip install 'line-markdown-parser @ git+https://github.com/darkgaldragon/line-markdown-parser.git@v0.1.0'
+python -m pip install 'line-markdown-parser @ git+https://github.com/darkgaldragon/line-markdown-parser.git@v0.1.1'
 ```
 
 ## Quick start

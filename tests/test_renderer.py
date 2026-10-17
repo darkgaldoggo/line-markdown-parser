@@ -228,6 +228,32 @@ def test_markdown_link_label_can_include_inline_code():
     assert code["decoration"] == "underline"
 
 
+@pytest.mark.parametrize(
+    "label,visible_label",
+    [
+        ("use `a[b`", "use a[b"),
+        ("use `a]b`", "use a]b"),
+        ("use `a[b]`", "use a[b]"),
+        ("use ``a`[b]``", "use a`[b]"),
+        (r"use \[x\]", "use [x]"),
+        (r"use a\[b", "use a[b"),
+        (r"use a\]b", "use a]b"),
+    ],
+)
+def test_link_labels_preserve_brackets_in_code_and_escapes(label, visible_label):
+    contents = build_flex_contents(f"**[{label}](https://example.com)**")
+
+    assert _all_visible_text(contents) == f"🔗 {visible_label}"
+    assert [
+        node["action"]["uri"] for node in _walk(contents) if node.get("action")
+    ] == ["https://example.com"]
+    assert all(
+        span.get("weight") == "bold"
+        for span in _spans(contents)
+        if span["text"] != "🔗 "
+    )
+
+
 def test_bold_list_item_spanning_action_uri_keeps_label_and_description_bold():
     contents = build_flex_contents(
         "- **[資料A](https://example.com/document-a)：説明A**\n"
@@ -649,6 +675,25 @@ def test_html_code_preserves_its_contents(literal):
     span = _span_with_text(contents, literal)
     assert span["color"] == "#C46A00"
     assert span["weight"] == "bold"
+
+
+@pytest.mark.parametrize("literal", ["<code>", "<code class='x'>", "</code>"])
+def test_html_code_tag_in_backticks_does_not_consume_the_next_code_span(literal):
+    contents = build_flex_contents(f"`{literal}` <code>x<br>y</code>")
+
+    assert _all_visible_text(contents) == f"{literal} x<br>y"
+    assert _span_with_text(contents, literal)["color"] == "#C46A00"
+    assert _span_with_text(contents, "x<br>y")["color"] == "#C46A00"
+    assert len(_text_components(contents)) == 1
+
+
+def test_html_code_closing_tag_in_backticks_stays_literal():
+    literal = "x `</code>` y<br>z"
+    contents = build_flex_contents(f"<code>{literal}</code>")
+
+    assert _all_visible_text(contents) == literal
+    assert _span_with_text(contents, literal)["color"] == "#C46A00"
+    assert len(_text_components(contents)) == 1
 
 
 def test_escaped_backticks_do_not_protect_html_from_normalization():
