@@ -4,6 +4,8 @@ LLMが生成したMarkdownを、LINEで読みやすいFlex Messageの辞書に�
 
 [English](https://github.com/darkgaldragon/line-markdown-parser/blob/main/README.md)
 
+LINE BOTでの実運用を通じて改善してきた変換処理をもとにしています。
+
 見出し、段落、リスト、引用、コード、リンクをチャットに適したレイアウトに変換し、長文を複数メッセージに分割します。送信処理はアプリケーション側で実装してください。
 
 ## インストール
@@ -57,7 +59,7 @@ print(json.dumps(messages, ensure_ascii=False, indent=2))
 - 画像はラベルとリンクで表示し、取得や埋め込みは行いません。
 - URIアクションは `http` と `https` のみに対応します。リンク先の検証は行いません。
 - 完全なCommonMark互換と任意のネストには対応していません。コードフェンスもすべての形式に対応しているわけではありません。
-- 自動テストで検証したアルファ版です。実際のLINEでの送信・表示は未確認のため、導入時に[Flex Message Simulator](https://developers.line.biz/flex-simulator/)と対象のLINEクライアントで確認してください。
+- 導入時は、[Flex Message Simulator](https://developers.line.biz/flex-simulator/)と利用するLINEアプリで表示を確認してください。
 
 ## 開発への参加
 

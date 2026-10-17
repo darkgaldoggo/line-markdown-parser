@@ -5,7 +5,7 @@ backend-path = ["."]
 
 [project]
 name = "line-markdown-parser"
-version = "0.1.3"
+version = "0.1.4"
 description = "Convert LLM Markdown into readable LINE Flex Messages without runtime dependencies."
 readme = "README.md"
 requires-python = ">=3.10"

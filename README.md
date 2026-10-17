@@ -4,6 +4,8 @@ Convert LLM Markdown into readable LINE Flex Message dictionaries with no runtim
 
 [日本語](https://github.com/darkgaldragon/line-markdown-parser/blob/main/README-ja.md)
 
+The library builds on conversion logic refined through ongoing use in a LINE bot.
+
 Headings, paragraphs, lists, quotes, code, and links receive a chat-friendly layout. Long output is split into separate messages. Sending remains the responsibility of your application.
 
 ## Installation
@@ -57,7 +59,7 @@ The converter defaults to 1,600 source characters and 28,000 rendered bytes per 
 - Images appear as labels and links, without fetching or embedding images.
 - Only `http` and `https` links receive URI actions; destinations are not verified.
 - Full CommonMark support, arbitrary nesting, and every code-fence style are outside the scope.
-- This is an alpha release with automated tests. Live LINE delivery and client appearance have not been verified. Check integration with the [Flex Message Simulator](https://developers.line.biz/flex-simulator/) and your target LINE clients.
+- When integrating, check the output with the [Flex Message Simulator](https://developers.line.biz/flex-simulator/) and your target LINE clients.
 
 ## Contributing
 
