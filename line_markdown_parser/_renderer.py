@@ -15,7 +15,7 @@ CODE_BLOCK_INDENT_SPACE = "\xa0"
 
 
 def is_char_emoji(char):
-    """文字が絵文字の主要なUnicode範囲に含まれるかチェック"""
+    """文字が絵文字の主要なUnicode範囲に含まれるか判定する。"""
     if not char:
         return False
     code = ord(char)
@@ -48,7 +48,7 @@ _LINK_PATTERN = re.compile(
 
 
 def _normalize_inline_html_lite(text: str) -> str:
-    """LLMが混ぜがちな軽量HTMLタグをMarkdown風の装飾へ寄せる。"""
+    """対応するインラインHTMLタグをMarkdown記法に置き換える。"""
     if not text or "<" not in text:
         return text
     tag_replacements: tuple[tuple[str, str, str], ...] = (
@@ -75,7 +75,7 @@ def _normalize_inline_html_lite(text: str) -> str:
 
 
 def _is_escaped(text: str, index: int) -> bool:
-    """index位置の文字が奇数個の直前バックスラッシュでescapeされているか判定する。"""
+    """index位置の文字が、直前の奇数個のバックスラッシュでエスケープされているか判定する。"""
     slash_count = 0
     cursor = index - 1
     while cursor >= 0 and text[cursor] == "\\":
@@ -165,11 +165,10 @@ def _merge_adjacent_spans(spans: list[dict]) -> list[dict]:
 
 
 def _iter_inline_code_spans(text: str) -> list[tuple[int, int, str]]:
-    """Markdown code span を (開始index, 終了index, 正規化済み内側テキスト) で列挙する。
+    """インラインコードを (開始位置, 終了位置, 正規化した本文) のタプルで列挙する。
 
-    終了indexは閉じバッククォートの直後。内側テキストは改行と連続空白を1スペースに畳む。
-    強調解析と共有することで、`code` の範囲を保持したまま **`code`** のような
-    「強調が code span をまたぐ」ケースを正しく扱えるようにする。
+    終了位置は閉じるバッククォートの直後。本文の改行と連続する空白を半角スペース1つにまとめる。
+    強調の解析でもこの範囲を使い、**`code`** のような記法を処理する。
     """
     spans: list[tuple[int, int, str]] = []
     index = 0
@@ -203,7 +202,7 @@ def _iter_inline_code_spans(text: str) -> list[tuple[int, int, str]]:
 
 
 def _inline_code_span_ranges(text: str) -> list[tuple[int, int]]:
-    """Markdown code span が占めるソース範囲（バッククォート込み）を返す。"""
+    """インラインコードの範囲を、バッククォートも含めて返す。"""
     return [(start, end) for start, end, _ in _iter_inline_code_spans(text)]
 
 
@@ -241,7 +240,7 @@ def _find_unclosed_inline_delimiter(text: str) -> tuple[str, int] | None:
 def _inline_link_ranges(
     text: str, code_ranges: list[tuple[int, int]]
 ) -> list[tuple[int, int]]:
-    """リンクを不可分の範囲にし、URL 内の記号を外側の強調と混同しない。"""
+    """リンクの範囲を返す。URL内の記号を外側の強調と混同しないために使う。"""
     ranges: list[tuple[int, int]] = []
     prefix = ""
     previous_end = 0
@@ -277,12 +276,12 @@ def _strip_plain_url_punctuation(url: str) -> str:
 def _parse_inline_styled_spans(
     text: str, style: dict[str, bool], *, parse_links: bool = False, _depth: int = 0
 ) -> list[dict]:
-    """インライン Markdown を解析し、リンクの前後にも同じ強調を適用する。
+    """インラインのMarkdownを解析し、リンクの前後にも同じ強調を適用する。
 
-    code span は強調より優先して描画しつつ、その占有範囲を保持したまま走査するため、
-    **`code`** のように強調が code span をまたぐ場合でも開始/終了デリミタを
-    正しくペアリングできる。code span 内側の Markdown は装飾として再解釈しない。
-    parse_links 時の _link は内部 token。アクション行への分離は強調確定後に行う。
+    インラインコードを優先して処理し、その範囲を保持して強調の開始・終了記号を対応付ける。
+    これにより **`code`** のような記法を扱う。コード内のMarkdownは装飾として解釈しない。
+    parse_linksが有効な場合、_linkを内部トークンとして使う。
+    アクション行への分離は強調範囲の確定後に行う。
     """
     if _depth >= 64:
         span = _span_for_text(text, style)
@@ -393,7 +392,7 @@ def _parse_inline_to_spans(
 def process_text_segment_to_spans(
     text_segment, base_style: dict[str, bool] | None = None
 ):
-    """テキストセグメントをMarkdown inline装飾つきのFlex spanへ変換する。"""
+    """テキストを、Markdownのインライン装飾を反映したFlex spanに変換する。"""
     return _parse_inline_to_spans(text_segment, base_style)
 
 
@@ -512,7 +511,7 @@ def _normalize_link_adjacent_text_segment(
 def _process_line_to_flex_components_without_code_spans(
     line, base_style: dict[str, bool] | None = None
 ):
-    """code spanの外側だけを対象にリンク化し、通常テキストはinline Markdown spanへ変換する。"""
+    """インラインコードの外側だけをリンク化し、通常テキストは装飾つきのFlex spanに変換する。"""
     line_components = []
     inline_code_ranges = _inline_code_span_ranges(line)
     last_index = 0
@@ -748,7 +747,7 @@ def _strip_markdown_hard_break(text: str) -> str:
 
 
 def _looks_like_list_item_title_line(text: str) -> bool:
-    """リスト行が「太字のみ」のタイトル行っぽい場合に True（意図した改行として扱う）。"""
+    """リストの末尾行がタイトルとみなせる場合にTrueを返す（改行として扱う）。"""
     last_line = text.split("\n")[-1].rstrip()
     match = _LIST_ITEM_MARKER_RE.match(last_line)
     if not match:
@@ -1084,7 +1083,7 @@ def _render_list_item(
 
 
 def parse_text_with_links(text):
-    """テキストを解析し、コードブロック、見出し、リスト、リンク、太字をFlexメッセージコンテンツに変換する"""
+    """テキストを解析し、コードブロック、見出し、リスト、リンク、太字をFlex Messageのコンテンツに変換する。"""
     code_delimiter_pattern = "(```[\\s\\S]*?```)"
     segments = re.split(code_delimiter_pattern, text)
     contents = []
@@ -1340,7 +1339,7 @@ def parse_text_with_links(text):
 
 
 def _is_separator_text_component(component: dict) -> bool:
-    """Flexテキストコンポーネントが区切り線かどうかを判定"""
+    """Flexのテキストコンポーネントが区切り線かどうかを判定する。"""
     if not isinstance(component, dict):
         return False
     if component.get("type") != "text":
