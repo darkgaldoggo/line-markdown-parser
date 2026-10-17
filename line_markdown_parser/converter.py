@@ -11,7 +11,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from ._renderer import _LINK_PATTERN
+from ._renderer import _iter_links
 from ._renderer import build_flex_contents as _render_contents
 
 DEFAULT_MAX_FLEX_PAYLOAD_BYTES = 28_000
@@ -159,7 +159,7 @@ def split_long_text(
         start = 0
         overhead = len(wrap(""))
         link_ranges = (
-            [match.span() for match in _LINK_PATTERN.finditer(body)]
+            [(link.start, link.end) for link in _iter_links(body)]
             if preserve_links
             else []
         )

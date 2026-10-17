@@ -228,6 +228,53 @@ def test_markdown_link_label_can_include_inline_code():
     assert code["decoration"] == "underline"
 
 
+@pytest.mark.parametrize("separator", ["", ",", ";"])
+def test_bare_url_immediately_after_markdown_link_keeps_its_action(separator):
+    contents = build_flex_contents(
+        f"[A](https://example.com){separator}https://example.org/path"
+    )
+
+    assert [
+        node["action"]["uri"] for node in _walk(contents) if node.get("action")
+    ] == ["https://example.com", "https://example.org/path"]
+
+
+@pytest.mark.parametrize("autolink", [False, True])
+def test_url_starting_before_markdown_syntax_keeps_precedence(autolink):
+    source = "https://example.org/[A](https://example.com)"
+    contents = build_flex_contents(f"<{source}>" if autolink else source)
+
+    assert [
+        node["action"]["uri"] for node in _walk(contents) if node.get("action")
+    ] == ["https://example.org/%5BA%5D(https://example.com)"]
+
+
+@pytest.mark.parametrize(
+    "label,visible_label",
+    [
+        ("use `a[b`", "use a[b"),
+        ("use `a]b`", "use a]b"),
+        ("use `a[b]`", "use a[b]"),
+        ("use ``a`[b]``", "use a`[b]"),
+        (r"use \[x\]", "use [x]"),
+        (r"use a\[b", "use a[b"),
+        (r"use a\]b", "use a]b"),
+    ],
+)
+def test_link_labels_preserve_brackets_in_code_and_escapes(label, visible_label):
+    contents = build_flex_contents(f"**[{label}](https://example.com)**")
+
+    assert _all_visible_text(contents) == f"🔗 {visible_label}"
+    assert [
+        node["action"]["uri"] for node in _walk(contents) if node.get("action")
+    ] == ["https://example.com"]
+    assert all(
+        span.get("weight") == "bold"
+        for span in _spans(contents)
+        if span["text"] != "🔗 "
+    )
+
+
 def test_bold_list_item_spanning_action_uri_keeps_label_and_description_bold():
     contents = build_flex_contents(
         "- **[資料A](https://example.com/document-a)：説明A**\n"
@@ -649,6 +696,39 @@ def test_html_code_preserves_its_contents(literal):
     span = _span_with_text(contents, literal)
     assert span["color"] == "#C46A00"
     assert span["weight"] == "bold"
+
+
+@pytest.mark.parametrize("literal", ["<code>", "<code class='x'>", "</code>"])
+def test_html_code_tag_in_backticks_does_not_consume_the_next_code_span(literal):
+    contents = build_flex_contents(f"`{literal}` <code>x<br>y</code>")
+
+    assert _all_visible_text(contents) == f"{literal} x<br>y"
+    assert _span_with_text(contents, literal)["color"] == "#C46A00"
+    assert _span_with_text(contents, "x<br>y")["color"] == "#C46A00"
+    assert len(_text_components(contents)) == 1
+
+
+@pytest.mark.parametrize(
+    "source,code_texts,visible",
+    [
+        ("<code>`</code> and <code>`</code>", ["`", "`"], "` and `"),
+        (
+            "<code>a ` b<br>c</code> and `d`",
+            ["a ` b<br>c", "d"],
+            "a ` b<br>c and d",
+        ),
+    ],
+)
+def test_backticks_in_html_code_do_not_capture_other_code_spans(
+    source, code_texts, visible
+):
+    contents = build_flex_contents(source)
+
+    assert _all_visible_text(contents) == visible
+    assert [
+        span["text"] for span in _spans(contents) if span["color"] == "#C46A00"
+    ] == code_texts
+    assert len(_text_components(contents)) == 1
 
 
 def test_escaped_backticks_do_not_protect_html_from_normalization():

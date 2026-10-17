@@ -1,9 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 — 2026-10-18
 
 - Avoid excessive parsing time for unfinished links and emphasis.
-- Preserve inline code, punctuation-only text, and URL delimiters; reject malformed action URLs.
+- Preserve inline code, brackets in link labels, punctuation-only text, and URL delimiters; reject malformed action URLs.
 - Improve internal-URL checks, archive error reporting, and source-distribution file permissions.
 - Clarify alpha status and simplify usage and contribution guides.
 

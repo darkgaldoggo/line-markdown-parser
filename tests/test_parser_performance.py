@@ -13,6 +13,8 @@ from line_markdown_parser import build_flex_contents
         ("build_flex_contents", "[x](" + "a" * 1000),
         ("split_long_text", "[x](" + "a" * 1000),
         ("build_flex_contents", "[" * 200_000),
+        ("build_flex_contents", r"\[" * 90_000),
+        ("build_flex_contents", "[label `a[b]` " * 10_000),
         ("build_flex_contents", "*a " * 30_000),
         ("build_flex_contents", "*a\n" * 3000),
         ("convert_markdown_to_line_messages", "*a\n" * 3000),
@@ -21,6 +23,8 @@ from line_markdown_parser import build_flex_contents
         "unclosed-link-render",
         "unclosed-link-split",
         "unclosed-labels",
+        "escaped-brackets",
+        "unclosed-labels-containing-code",
         "unclosed-inline-emphasis",
         "unclosed-multiline-emphasis-render",
         "unclosed-multiline-emphasis-convert",
@@ -41,6 +45,24 @@ print("ok")
     result = subprocess.run(
         [sys.executable, "-c", script],
         input=json.dumps([function_name, source]),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=15,
+    )
+    assert result.stdout.strip() == "ok"
+
+
+def test_link_scanning_does_not_rescan_later_destinations():
+    script = """
+from line_markdown_parser._renderer import _iter_links
+
+for unit, count in (("[A](https://example.com),", 8000), ("[x](urn:item)", 15000)):
+    assert len(list(_iter_links(unit * count))) == count
+print("ok")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
         capture_output=True,
         text=True,
         check=True,

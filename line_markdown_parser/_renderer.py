@@ -2,8 +2,9 @@
 
 import re
 import urllib.parse
-from bisect import bisect_left
-from collections.abc import Callable
+from bisect import bisect_left, bisect_right
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from typing import Any
 
 LINE_ACTION_URI_MAX_LENGTH = 1000
@@ -44,9 +45,94 @@ _INLINE_DELIMITERS: tuple[tuple[str, dict[str, bool]], ...] = (
 )
 _CORE_URL_PATTERN = "https?:\\/\\/[\\w\\-\\.~:\\/?#[\\]@!$&\\'\\(\\)\\*\\+,;=%.]+"
 _MARKDOWN_DESTINATION_PATTERN = "(?:<[^>\\n]+>|(?:[^\\s()<>]|\\([^\\s()<>]*\\))+)"
-_LINK_PATTERN = re.compile(
-    f"(?P<markdown_match>\\[(?P<md_text>[^\\[\\]]*)\\]\\(\\s*(?P<md_url>{_MARKDOWN_DESTINATION_PATTERN})\\s*\\))|(?P<autolink_match><(?P<auto_url>{_CORE_URL_PATTERN})>)|(?P<plain_match>(?P<plain_url>{_CORE_URL_PATTERN}))"
+_MARKDOWN_DESTINATION_RE = re.compile(
+    f"\\(\\s*(?P<url>{_MARKDOWN_DESTINATION_PATTERN})\\s*\\)"
 )
+_URL_LINK_PATTERN = re.compile(
+    f"(?P<autolink><(?P<auto_url>{_CORE_URL_PATTERN})>)|(?P<plain_url>{_CORE_URL_PATTERN})"
+)
+_URL_START_PATTERN = re.compile(r"<?https?://")
+
+
+@dataclass(frozen=True)
+class _InlineLink:
+    start: int
+    end: int
+    kind: str
+    text: str
+    url: str
+    label: str | None = None
+
+
+def _iter_links(text: str) -> Iterator[_InlineLink]:
+    """ラベルの括弧を一度だけ走査し、コードとエスケープを除外してリンクを返す。"""
+    code_ends: dict[int, int] = {}
+    offset = 0
+    for line in text.split("\n"):
+        code_ends.update(
+            (offset + start, offset + end)
+            for start, end, _ in _iter_inline_code_spans(line)
+        )
+        offset += len(line) + 1
+    links: list[_InlineLink] = []
+    opening: int | None = None
+    index = 0
+    while index < len(text):
+        if index in code_ends:
+            index = code_ends[index]
+            continue
+        if text[index] == "\\" and index + 1 < len(text):
+            index += 2
+            continue
+        if text[index] == "[":
+            opening = index
+        elif text[index] == "]":
+            if opening is not None:
+                destination = _MARKDOWN_DESTINATION_RE.match(text, index + 1)
+                if destination:
+                    end = destination.end()
+                    links.append(
+                        _InlineLink(
+                            opening,
+                            end,
+                            "markdown",
+                            text[opening:end],
+                            destination.group("url"),
+                            text[opening + 1 : index],
+                        )
+                    )
+                    index = end - 1
+            opening = None
+        index += 1
+    index = 0
+    cursor = 0
+    while cursor < len(text):
+        while index < len(links) and links[index].start < cursor:
+            index += 1
+        link = links[index] if index < len(links) else None
+        # Markdownの手前でURLの開始だけを探し、宛先内のURLを再走査しない。
+        boundary = link.start if link is not None else len(text)
+        candidate = _URL_START_PATTERN.search(text, cursor, boundary)
+        if candidate is None and link is not None:
+            yield link
+            cursor = link.end
+            index += 1
+        elif candidate is not None:
+            match = _URL_LINK_PATTERN.match(text, candidate.start())
+            if match is None:
+                cursor = candidate.start() + 1
+                continue
+            autolink = match.group("autolink") is not None
+            yield _InlineLink(
+                match.start(),
+                match.end(),
+                "autolink" if autolink else "plain",
+                match.group(),
+                match.group("auto_url" if autolink else "plain_url"),
+            )
+            cursor = match.end()
+        else:
+            break
 
 
 def _transform_outside_inline_code(
@@ -56,10 +142,26 @@ def _transform_outside_inline_code(
     ranges = [
         (start, end, text[start:end]) for start, end, _ in _iter_inline_code_spans(text)
     ]
+    code_starts = [start for start, _, _ in ranges]
+
+    def code_end_at(position: int, minimum_start: int) -> int | None:
+        index = bisect_right(code_starts, position) - 1
+        # 先に処理したHTML code内のバッククォートは、後続のタグを保護しない。
+        if (
+            index >= 0
+            and ranges[index][0] >= minimum_start
+            and position < ranges[index][1]
+        ):
+            return ranges[index][1]
+        return None
+
     opening_pattern = re.compile(r"<code\b", re.IGNORECASE)
     closing_pattern = re.compile(r"</code>", re.IGNORECASE)
     cursor = 0
     while opening := opening_pattern.search(text, cursor):
+        if code_end := code_end_at(opening.start(), cursor):
+            cursor = code_end
+            continue
         tag_end = text.find(">", opening.end())
         if tag_end == -1:
             break
@@ -279,7 +381,9 @@ def _inline_code_span_ranges(text: str) -> list[tuple[int, int]]:
 
 
 def _position_inside_ranges(position: int, ranges: list[tuple[int, int]]) -> bool:
-    return any((start <= position < end for start, end in ranges))
+    """開始位置順で重複のない範囲から、指定位置を二分探索する。"""
+    index = bisect_right(ranges, position, key=lambda interval: interval[0]) - 1
+    return index >= 0 and position < ranges[index][1]
 
 
 def _find_unclosed_inline_delimiter(text: str) -> tuple[str, int] | None:
@@ -317,13 +421,13 @@ def _inline_link_ranges(
     ranges: list[tuple[int, int]] = []
     prefix = ""
     previous_end = 0
-    for match in _LINK_PATTERN.finditer(text):
-        start, end = match.span()
+    for link in _iter_links(text):
+        start, end = link.start, link.end
         if _position_inside_ranges(start, code_ranges):
             continue
         prefix += text[previous_end:start]
-        if match.group("plain_match"):
-            url = _strip_plain_url_punctuation(match.group("plain_url"))
+        if link.kind == "plain":
+            url = _strip_plain_url_punctuation(link.url)
             opener = _find_unclosed_inline_delimiter(prefix + "x")
             if opener and url.endswith(opener[0]):
                 url = url[: -len(opener[0])]
@@ -591,8 +695,8 @@ def _process_line_to_flex_components_without_code_spans(
     line_components = []
     inline_code_ranges = _inline_code_span_ranges(line)
     last_index = 0
-    for match in _LINK_PATTERN.finditer(line):
-        match_start, match_end = match.span(0)
+    for link in _iter_links(line):
+        match_start, match_end = link.start, link.end
         if _position_inside_ranges(match_start, inline_code_ranges):
             continue
         if match_start > last_index:
@@ -614,20 +718,20 @@ def _process_line_to_flex_components_without_code_spans(
         action_uri = None
         markdown_text_raw = None
         link_consumed_end = match_end
-        if match.group("markdown_match"):
-            markdown_text_raw = match.group("md_text")
-            action_uri = match.group("md_url")
+        if link.kind == "markdown":
+            markdown_text_raw = link.label
+            action_uri = link.url
             if action_uri and action_uri.startswith("<") and action_uri.endswith(">"):
                 action_uri = action_uri[1:-1].strip()
             if not action_uri:
                 last_index = match_end
                 continue
-        elif match.group("autolink_match"):
+        elif link.kind == "autolink":
             markdown_text_raw = None
-            action_uri = match.group("auto_url")
-        elif match.group("plain_match"):
+            action_uri = link.url
+        elif link.kind == "plain":
             markdown_text_raw = None
-            original_plain_url = match.group("plain_url")
+            original_plain_url = link.url
             action_uri = _strip_plain_url_punctuation(original_plain_url)
             if not action_uri:
                 last_index = match_end
@@ -642,7 +746,7 @@ def _process_line_to_flex_components_without_code_spans(
             if not action_uri.startswith(("http://", "https://")):
                 # Unsupported destinations never become actions. Preserve the
                 # useful label without exposing a local or custom-scheme URI.
-                segment = markdown_text_raw or match.group(0)
+                segment = markdown_text_raw or link.text
                 spans = process_text_segment_to_spans(segment, base_style)
                 if spans:
                     line_components.append(
@@ -687,7 +791,7 @@ def _process_line_to_flex_components_without_code_spans(
                     sanitized_uri += f"#{sanitized_fragment}"
                 action_uri = sanitized_uri
             except ValueError:
-                segment = match.group(0)
+                segment = link.text
                 spans = process_text_segment_to_spans(segment, base_style)
                 if spans:
                     line_components.append(
@@ -702,7 +806,7 @@ def _process_line_to_flex_components_without_code_spans(
                 last_index = match_end
                 continue
             if len(action_uri) > LINE_ACTION_URI_MAX_LENGTH:
-                segment = match.group(0)
+                segment = link.text
                 spans = process_text_segment_to_spans(segment, base_style)
                 if spans:
                     line_components.append(
@@ -716,8 +820,8 @@ def _process_line_to_flex_components_without_code_spans(
                     )
                 last_index = match_end
                 continue
-            is_markdown_link = bool(match.group("markdown_match"))
-            is_autolink = bool(match.group("autolink_match"))
+            is_markdown_link = link.kind == "markdown"
+            is_autolink = link.kind == "autolink"
             display_text_source = ""
             if is_markdown_link:
                 display_text_source = (
