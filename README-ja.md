@@ -2,7 +2,7 @@
 
 LLMが生成したMarkdownを、LINEで読みやすいFlex Messageの辞書に変換するPythonライブラリです。実行時の外部依存はありません。
 
-[English](README.md)
+[English](https://github.com/darkgaldragon/line-markdown-parser/blob/main/README.md)
 
 見出し、段落、リスト、引用、コード、リンクをチャットに適したレイアウトに変換し、長文を複数メッセージに分割します。送信処理はアプリケーション側で実装してください。
 
@@ -49,7 +49,7 @@ print(json.dumps(messages, ensure_ascii=False, indent=2))
 | `split_long_text` | 分割したMarkdownを `list[str]` で返す。 |
 | `estimate_flex_payload_size` | 生成したbubbleをコンパクトなJSONにしたときのUTF-8バイト数を返す。 |
 
-既定では、1チャンクあたり元テキスト1,600文字、bubbleのJSONサイズ28,000バイトを上限に分割します。引数、上限値、代替テキスト、エラー条件は[API仕様書](docs/spec.md)を参照してください。
+既定では、1チャンクあたり元テキスト1,600文字、bubbleのJSONサイズ28,000バイトを上限に分割します。引数、上限値、代替テキスト、エラー条件は[API仕様書](https://github.com/darkgaldragon/line-markdown-parser/blob/main/docs/spec.md)を参照してください。
 
 ## 制約
 
@@ -61,8 +61,8 @@ print(json.dumps(messages, ensure_ascii=False, indent=2))
 
 ## 開発への参加
 
-開発環境と確認コマンドは [CONTRIBUTING.md](CONTRIBUTING.md)、脆弱性報告は [SECURITY.md](SECURITY.md)、変更履歴は [CHANGELOG.md](CHANGELOG.md) を参照してください。
+開発環境と確認コマンドは [CONTRIBUTING.md](https://github.com/darkgaldragon/line-markdown-parser/blob/main/CONTRIBUTING.md)、脆弱性報告は [SECURITY.md](https://github.com/darkgaldragon/line-markdown-parser/blob/main/SECURITY.md)、変更履歴は [CHANGELOG.md](https://github.com/darkgaldragon/line-markdown-parser/blob/main/CHANGELOG.md) を参照してください。
 
 ## ライセンス
 
-[MIT](LICENSE)。本プロジェクトは独立したOSSであり、LINEの公式製品ではありません。
+[MIT](https://github.com/darkgaldragon/line-markdown-parser/blob/main/LICENSE)。本プロジェクトは独立したOSSであり、LINEの公式製品ではありません。
