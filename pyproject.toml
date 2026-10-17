@@ -14,7 +14,7 @@ license-files = ["LICENSE"]
 authors = [{name = "line-markdown-parser contributors"}]
 keywords = ["line", "markdown", "flex-message", "llm", "chatbot"]
 classifiers = [
-  "Development Status :: 4 - Beta",
+  "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
