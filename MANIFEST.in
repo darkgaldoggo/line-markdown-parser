@@ -8,5 +8,5 @@ prune examples
 prune .github
 prune .private
 prune docs/_internal
-exclude CONTRIBUTING.md SECURITY.md
+exclude CONTRIBUTING.md SECURITY.md AGENTS.md
 global-exclude __pycache__ *.py[cod] .DS_Store
