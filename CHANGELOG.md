@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4 — 2026-10-18
+
+- Clarify the conversion logic's use in a running LINE bot and integration guidance.
+
 ## 0.1.3 — 2026-10-18
 
 - Fix documentation links in the PyPI project description.
