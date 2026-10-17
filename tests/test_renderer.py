@@ -228,6 +228,27 @@ def test_markdown_link_label_can_include_inline_code():
     assert code["decoration"] == "underline"
 
 
+@pytest.mark.parametrize("separator", ["", ",", ";"])
+def test_bare_url_immediately_after_markdown_link_keeps_its_action(separator):
+    contents = build_flex_contents(
+        f"[A](https://example.com){separator}https://example.org/path"
+    )
+
+    assert [
+        node["action"]["uri"] for node in _walk(contents) if node.get("action")
+    ] == ["https://example.com", "https://example.org/path"]
+
+
+@pytest.mark.parametrize("autolink", [False, True])
+def test_url_starting_before_markdown_syntax_keeps_precedence(autolink):
+    source = "https://example.org/[A](https://example.com)"
+    contents = build_flex_contents(f"<{source}>" if autolink else source)
+
+    assert [
+        node["action"]["uri"] for node in _walk(contents) if node.get("action")
+    ] == ["https://example.org/%5BA%5D(https://example.com)"]
+
+
 @pytest.mark.parametrize(
     "label,visible_label",
     [

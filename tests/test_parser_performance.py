@@ -53,6 +53,24 @@ print("ok")
     assert result.stdout.strip() == "ok"
 
 
+def test_link_scanning_does_not_rescan_later_destinations():
+    script = """
+from line_markdown_parser._renderer import _iter_links
+
+for unit, count in (("[A](https://example.com),", 8000), ("[x](urn:item)", 15000)):
+    assert len(list(_iter_links(unit * count))) == count
+print("ok")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=15,
+    )
+    assert result.stdout.strip() == "ok"
+
+
 def _spans(value):
     if isinstance(value, dict):
         if value.get("type") == "span":

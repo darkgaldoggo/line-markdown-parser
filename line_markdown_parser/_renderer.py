@@ -51,6 +51,7 @@ _MARKDOWN_DESTINATION_RE = re.compile(
 _URL_LINK_PATTERN = re.compile(
     f"(?P<autolink><(?P<auto_url>{_CORE_URL_PATTERN})>)|(?P<plain_url>{_CORE_URL_PATTERN})"
 )
+_URL_START_PATTERN = re.compile(r"<?https?://")
 
 
 @dataclass(frozen=True)
@@ -65,7 +66,14 @@ class _InlineLink:
 
 def _iter_links(text: str) -> Iterator[_InlineLink]:
     """ラベルの括弧を一度だけ走査し、コードとエスケープを除外してリンクを返す。"""
-    code_ends = {start: end for start, end, _ in _iter_inline_code_spans(text)}
+    code_ends: dict[int, int] = {}
+    offset = 0
+    for line in text.split("\n"):
+        code_ends.update(
+            (offset + start, offset + end)
+            for start, end, _ in _iter_inline_code_spans(line)
+        )
+        offset += len(line) + 1
     links: list[_InlineLink] = []
     opening: int | None = None
     index = 0
@@ -96,22 +104,35 @@ def _iter_links(text: str) -> Iterator[_InlineLink]:
                     index = end - 1
             opening = None
         index += 1
-    for match in _URL_LINK_PATTERN.finditer(text):
-        autolink = match.group("autolink") is not None
-        links.append(
-            _InlineLink(
+    index = 0
+    cursor = 0
+    while cursor < len(text):
+        while index < len(links) and links[index].start < cursor:
+            index += 1
+        link = links[index] if index < len(links) else None
+        # Markdownの手前でURLの開始だけを探し、宛先内のURLを再走査しない。
+        boundary = link.start if link is not None else len(text)
+        candidate = _URL_START_PATTERN.search(text, cursor, boundary)
+        if candidate is None and link is not None:
+            yield link
+            cursor = link.end
+            index += 1
+        elif candidate is not None:
+            match = _URL_LINK_PATTERN.match(text, candidate.start())
+            if match is None:
+                cursor = candidate.start() + 1
+                continue
+            autolink = match.group("autolink") is not None
+            yield _InlineLink(
                 match.start(),
                 match.end(),
                 "autolink" if autolink else "plain",
                 match.group(),
                 match.group("auto_url" if autolink else "plain_url"),
             )
-        )
-    end = 0
-    for link in sorted(links, key=lambda link: link.start):
-        if link.start >= end:
-            yield link
-            end = link.end
+            cursor = match.end()
+        else:
+            break
 
 
 def _transform_outside_inline_code(

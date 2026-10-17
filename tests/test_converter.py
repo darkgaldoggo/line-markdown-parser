@@ -202,6 +202,29 @@ def test_link_label_brackets_stay_intact_when_splitting(label):
     assert sum(link in part for part in parts) == 1
 
 
+def test_bare_url_immediately_after_markdown_link_stays_intact_when_splitting():
+    markdown = "[A](https://example.com)"
+    bare_url = "https://example.org/path"
+    source = f"{markdown},{bare_url}"
+    parts = split_long_text(source, max_length=28)
+
+    assert "".join(parts) == source
+    assert sum(markdown in part for part in parts) == 1
+    assert sum(bare_url in part for part in parts) == 1
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_backticks_on_other_lines_do_not_allow_splitting_a_markdown_link(newline):
+    link = "[label](https://example.com)"
+    source = f"`{newline}{link}{newline}`"
+    with pytest.raises(ValueError, match="intact link"):
+        split_long_text(source, max_length=20)
+
+    parts = split_long_text(source, max_length=len(link))
+    assert "".join(parts) == source
+    assert sum(link in part for part in parts) == 1
+
+
 def test_intact_link_at_exact_byte_budget_can_be_split_from_following_text():
     link = "[guide](https://example.com/document)"
     text = link + " suffix" * 40
