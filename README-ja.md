@@ -8,10 +8,10 @@ LLMが生成したMarkdownを、LINEで読みやすいFlex Messageの辞書に�
 
 ## インストール
 
-Python 3.10以上が必要です。GitHubのリリースからインストールできます。PyPIには未公開です。
+Python 3.10以上が必要です。
 
 ```bash
-python -m pip install 'line-markdown-parser @ git+https://github.com/darkgaldragon/line-markdown-parser.git@v0.1.1'
+python -m pip install line-markdown-parser
 ```
 
 ## 使い方
