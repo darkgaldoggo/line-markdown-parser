@@ -1188,9 +1188,14 @@ def parse_text_with_links(text):
             if component_to_add:
                 contents.append(component_to_add)
         else:
-            normalized_segment = _transform_outside_inline_code(
-                segment,
-                lambda source: re.sub("<br\\s*/?>", "\n", source, flags=re.IGNORECASE),
+            normalized_segment = "\n".join(
+                _transform_outside_inline_code(
+                    line,
+                    lambda source: re.sub(
+                        "<br\\s*/?>", "\n", source, flags=re.IGNORECASE
+                    ),
+                )
+                for line in segment.split("\n")
             )
             lines = normalized_segment.strip().split("\n")
             normalized_lines = []

@@ -659,6 +659,27 @@ def test_escaped_backticks_do_not_protect_html_from_normalization():
     assert not any(span.get("color") == "#C46A00" for span in _spans(contents))
 
 
+@pytest.mark.parametrize("opener,closer", [("`", "`"), ("<code>", "</code>")])
+def test_code_markers_on_other_lines_do_not_suppress_html_breaks(opener, closer):
+    contents = build_flex_contents(f"x {opener}y\nz <br> w\n{closer} q")
+
+    visible_lines = [
+        "".join(span["text"] for span in component.get("contents", []))
+        for component in _text_components(contents)
+    ]
+    assert visible_lines == [f"x {opener}y", "z", "w", f"{closer} q"]
+    assert not any(span.get("color") == "#C46A00" for span in _spans(contents))
+
+
+def test_multiline_emphasis_preserves_inline_code_and_html_breaks():
+    contents = build_flex_contents("**start\n`<br>` middle<br>end**")
+
+    assert _span_with_text(contents, "<br>")["color"] == "#C46A00"
+    assert all(span.get("weight") == "bold" for span in _spans(contents))
+    assert _all_visible_text(contents) == "start<br> middleend"
+    assert len(_text_components(contents)) == 3
+
+
 @pytest.mark.parametrize(
     "destination",
     [
