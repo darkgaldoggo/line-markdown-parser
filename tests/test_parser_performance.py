@@ -18,6 +18,7 @@ from line_markdown_parser import build_flex_contents
         ("build_flex_contents", "*a " * 30_000),
         ("build_flex_contents", "*a\n" * 3000),
         ("convert_markdown_to_line_messages", "*a\n" * 3000),
+        ("build_flex_contents", "<b" * 90_000),
     ],
     ids=[
         "unclosed-link-render",
@@ -28,6 +29,7 @@ from line_markdown_parser import build_flex_contents
         "unclosed-inline-emphasis",
         "unclosed-multiline-emphasis-render",
         "unclosed-multiline-emphasis-convert",
+        "unfinished-html-opener",
     ],
 )
 def test_unclosed_markdown_finishes_within_generous_timeout(function_name, source):
@@ -98,32 +100,33 @@ def test_multiline_emphasis_does_not_cross_block_boundaries(boundary):
     assert not any(span.get("style") == "italic" for span in _spans(contents))
 
 
-def test_unclosed_html_tags_are_bounded_at_every_public_entry_point():
+@pytest.mark.parametrize("tag", ["b", "strong", "em", "i", "s", "del"])
+def test_unclosed_html_tags_are_bounded_at_every_public_entry_point(tag):
+    # Bound each adversarial input independently. Combining all six tags under
+    # one timeout measures cumulative work and is sensitive to CI host speed.
     script = r"""
+import sys
 import line_markdown_parser as parser
 
-for tag in ("b", "strong", "em", "i", "s", "del"):
-    unit = f"<{tag}>"
-    source = unit * (180_000 // len(unit))
-    contents = parser.build_flex_contents(source)
-    assert contents
-    assert parser.estimate_flex_payload_size(source) > 30_000
-    try:
-        parser.build_flex_message(source)
-    except ValueError as error:
-        assert "30,000" in str(error)
-    else:
-        raise AssertionError("oversized message accepted")
-    parts = parser.split_long_text(source, max_length=200_000)
-    assert "".join(parts) == source
-    messages = parser.convert_markdown_to_line_messages(source, max_length=200_000)
-    assert len(messages) == len(parts) > 1
-# An incomplete opening tag must not trigger repeated searches for its > either.
-assert parser.build_flex_contents("<b" * 90_000)
+unit = f"<{sys.argv[1]}>"
+source = unit * (180_000 // len(unit))
+contents = parser.build_flex_contents(source)
+assert contents
+assert parser.estimate_flex_payload_size(source) > 30_000
+try:
+    parser.build_flex_message(source)
+except ValueError as error:
+    assert "30,000" in str(error)
+else:
+    raise AssertionError("oversized message accepted")
+parts = parser.split_long_text(source, max_length=200_000)
+assert "".join(parts) == source
+messages = parser.convert_markdown_to_line_messages(source, max_length=200_000)
+assert len(messages) == len(parts) > 1
 print("ok")
 """
     result = subprocess.run(
-        [sys.executable, "-c", script],
+        [sys.executable, "-c", script, tag],
         capture_output=True,
         text=True,
         check=False,
