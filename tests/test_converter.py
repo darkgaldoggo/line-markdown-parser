@@ -4,6 +4,7 @@ import json
 import random
 
 import pytest
+from flex_assertions import assert_message
 
 from line_markdown_parser import (
     build_flex_contents,
@@ -250,4 +251,35 @@ def test_deterministic_mixed_input_has_valid_bounded_json():
         messages = convert_markdown_to_line_messages(text, max_payload_bytes=1800)
         assert messages
         assert all(_bytes(message["contents"]) <= 1800 for message in messages)
-        assert all(message["contents"]["body"]["contents"] for message in messages)
+        for message in messages:
+            assert_message(message, 1800)
+
+
+def test_adjacent_bare_and_markdown_links_split_at_their_real_boundary():
+    bare = "https://example.com"
+    markdown = "[Guide](https://example.org/docs)"
+    source = bare + markdown
+    parts = split_long_text(source, max_length=len(markdown))
+    assert parts == [bare, markdown]
+
+
+@pytest.mark.parametrize(
+    "body", ["foo bar\n" + "x" * 200, "x" * 200, "https://example.com/" + "x" * 200]
+)
+def test_code_fence_body_and_headers_are_shared_with_splitting(body):
+    # Both an unrecognized language line and an inline triple-backtick block
+    # are code bodies. Neither may become a repeated header or lose its fence.
+    source = "```" + body + "```"
+    parts = split_long_text(source, max_length=60, max_payload_bytes=1000)
+    assert len(parts) > 1
+    assert all(part.startswith("```\n") and part.endswith("\n```") for part in parts)
+    assert "".join(part[4:-4] for part in parts) == body
+    for part in parts:
+        assert_message(build_flex_message(part), 1000)
+
+
+def test_non_language_first_line_is_not_repeated_or_padded_with_an_extra_newline():
+    from flex_assertions import visible_text
+
+    source = "```foo bar\nx\n```"
+    assert visible_text(build_flex_contents(source)) == "foo bar\nx"

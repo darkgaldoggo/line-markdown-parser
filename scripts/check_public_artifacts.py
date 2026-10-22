@@ -41,11 +41,23 @@ TRACKED_FILES = frozenset(
         "SECURITY.md",
         "docs/spec.md",
         "scripts/check_public_artifacts.py",
+        "scripts/check_wheel.py",
     }
 )
 PACKAGE_FILES = frozenset(
     f"line_markdown_parser/{name}"
-    for name in ("__init__.py", "_renderer.py", "converter.py", "py.typed")
+    for name in (
+        "__init__.py",
+        "_blocks.py",
+        "_flex.py",
+        "_inline.py",
+        "_inline_renderer.py",
+        "_renderer.py",
+        "_syntax.py",
+        "_uri.py",
+        "converter.py",
+        "py.typed",
+    )
 )
 SDIST_FILES = frozenset(
     {

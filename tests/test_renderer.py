@@ -46,6 +46,35 @@ def _span_with_text(contents, text):
     )
 
 
+@pytest.mark.parametrize("marker", [".", ")"])
+@pytest.mark.parametrize("whitespace", [" ", "  ", "\t", " \t"])
+def test_empty_ordered_item_body_accepts_an_indented_continuation(marker, whitespace):
+    source = f"Introduction\n\n1{marker}{whitespace}\n   continuation\n2{marker} next"
+    expected = build_flex_contents(
+        f"Introduction\n\n1{marker} continuation\n2{marker} next"
+    )
+    assert build_flex_contents(source) == expected
+
+
+@pytest.mark.parametrize("marker", [".", ")"])
+@pytest.mark.parametrize("whitespace", [" ", "  ", "\t", " \t"])
+def test_empty_ordered_marker_without_continuation_remains_text(marker, whitespace):
+    contents = build_flex_contents(f"Introduction\n\n1{marker}{whitespace}\n\nEnd")
+    assert _span_with_text(contents, f"1{marker}")
+    assert not any(node.get("layout") == "horizontal" for node in _walk(contents))
+
+
+@pytest.mark.parametrize("marker", [".", ")"])
+@pytest.mark.parametrize("whitespace", [" ", "  ", "\t", " \t"])
+@pytest.mark.parametrize("title", ["Title:", "**Title**"])
+def test_empty_ordered_marker_preserves_title_continuation_breaks(
+    marker, whitespace, title
+):
+    source = f"1{marker}{whitespace}\n   {title}\n   detail"
+    expected = build_flex_contents(f"1{marker} {title}\n   detail")
+    assert build_flex_contents(source) == expected
+
+
 def test_inline_markdown_renders_as_flex_spans():
     contents = build_flex_contents("`code` *italic* **bold** ***both*** ~~gone~~")
 
@@ -853,3 +882,15 @@ print("ok")
         timeout=15,
     )
     assert result.stdout.strip() == "ok"
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    ["https://example.org/path", "https://example.org/?q=", "https://example.org/#"],
+)
+def test_markdown_looking_text_in_url_components_remains_in_the_destination(prefix):
+    source = prefix + "[A](https://example.com)"
+    contents = build_flex_contents(source)
+    assert [
+        node["action"]["uri"] for node in _walk(contents) if node.get("action")
+    ] == [prefix + "%5BA%5D(https://example.com)"]

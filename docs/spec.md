@@ -1,6 +1,6 @@
 # API specification
 
-`line-markdown-parser` converts Markdown strings into LINE Flex Message dictionaries without runtime dependencies or network requests. The API below applies to version 0.1.4.
+`line-markdown-parser` converts Markdown strings into LINE Flex Message dictionaries without runtime dependencies or network requests. This document describes the current source tree; see the changelog for released versions.
 
 ## Functions
 
@@ -29,7 +29,7 @@ estimate_flex_payload_size(text) -> int
 | `split_long_text` | Return Markdown chunks within both source-length and rendered-byte limits. Empty or whitespace-only input returns `[]` after argument validation. |
 | `estimate_flex_payload_size` | Return the rendered bubble's compact UTF-8 JSON size, including for empty input. |
 
-Visual properties and exact component nesting may change without changing this contract.
+Every call returns fresh mutable dictionaries; modifying one message does not affect other messages or later calls. Candidate layouts may be reused within a call, but input and output are not cached across calls. Visual properties and exact component nesting may change without changing this contract.
 
 ## Limits and splitting
 
@@ -64,9 +64,11 @@ All text arguments must be strings; other types raise `TypeError`. Every public 
 | Links | Labels and supported URI actions. |
 | Images | Labels and links; no fetching or image components. |
 
+Paragraphs, headings, quotes, list items, and emoji-leading lines share inline parsing. For example, `# [Guide](https://example.com)` produces a heading with a URI action. Links occupy separate text components so each destination is clickable. Link labels retain the `🔗 ` prefix and are shortened to 40 characters; the action keeps the full destination.
+
 Full CommonMark conformance, HTML rendering, arbitrary nesting, and exact browser-style layout are outside the scope. Malformed input or unusual fences may render as ordinary text or lose formatting. Table alignment depends on client fonts and display width.
 
-Only `http` and `https` receive [URI actions](https://developers.line.biz/en/reference/messaging-api/#uri-action). Unsupported schemes retain their labels without an action. Malformed HTTP(S) destinations and URLs exceeding the action URI length limit remain text. Existing percent escapes and URL delimiters are preserved when encoding destinations. Destinations are not verified.
+Only `http` and `https` receive [URI actions](https://developers.line.biz/en/reference/messaging-api/#uri-action). Unsupported schemes retain their labels without an action. Malformed HTTP(S) destinations and URLs exceeding the action URI length limit remain text. Existing percent escapes and URL delimiters are preserved when encoding destinations. Destinations are not verified. Lowercase `http://` and `https://` with ASCII hostnames are supported; uppercase schemes, IPv6 hosts, and title-bearing links such as `[Guide](https://example.com "title")` are outside the supported subset.
 
 ## Integration
 

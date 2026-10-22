@@ -6,7 +6,7 @@ Convert LLM Markdown into readable LINE Flex Message dictionaries with no runtim
 
 The library builds on conversion logic refined through ongoing use in a LINE bot.
 
-Headings, paragraphs, lists, quotes, code, and links receive a chat-friendly layout. Long output is split into separate messages. Sending remains the responsibility of your application.
+Headings, paragraphs, lists, quotes, code, and links receive a chat-friendly layout. Long output is split into separate messages. Links also work inside headings, quotes, and list items. Sending remains the responsibility of your application.
 
 ## Installation
 

@@ -7,19 +7,22 @@ across calls, sent over the network, or written to disk.
 from __future__ import annotations
 
 import json
-import re
+from bisect import bisect_right
+from collections import OrderedDict
 from collections.abc import Callable
-from typing import Any
+from copy import deepcopy
+from dataclasses import dataclass
+from sys import getsizeof
+from typing import Any, cast
 
-from ._renderer import _iter_links
+from ._flex import FlexBubble, FlexComponent, FlexMessage
 from ._renderer import build_flex_contents as _render_contents
+from ._syntax import _iter_links, iter_fenced_segments, parse_code_fence
 
 DEFAULT_MAX_FLEX_PAYLOAD_BYTES = 28_000
 _MAX_BUBBLE_BYTES = 30_000
 _MAX_ALT_TEXT_UNITS = 1_500
 _MAX_INPUT_BYTES = 200_000
-# Keep fence recognition aligned with the renderer's supported Markdown subset.
-_CODE_FENCE_RE = re.compile(r"(```[\s\S]*?```)")
 
 
 def _require_text(text: str) -> str:
@@ -38,6 +41,10 @@ def build_flex_contents(text: str) -> list[dict[str, Any]]:
     This low-level function does not split or enforce the bubble byte limit.
     """
     _require_text(text)
+    return cast(list[dict[str, Any]], _body_contents(text))
+
+
+def _body_contents(text: str) -> list[FlexComponent]:
     if not text.strip():
         return []
     contents = _render_contents(text)
@@ -45,24 +52,82 @@ def build_flex_contents(text: str) -> list[dict[str, Any]]:
     return contents or [{"type": "text", "text": text.strip(), "wrap": True}]
 
 
-def _bubble(text: str) -> dict[str, Any]:
+def _bubble(text: str) -> FlexBubble:
     return {
         "type": "bubble",
         "size": "giga",
         "body": {
             "type": "box",
             "layout": "vertical",
-            "contents": build_flex_contents(text),
+            "contents": _body_contents(text),
             "paddingAll": "16px",
             "backgroundColor": "#FFFFFF",
         },
     }
 
 
-def _json_size(value: dict[str, Any]) -> int:
+def _json_size(value: object) -> int:
     return len(
         json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     )
+
+
+@dataclass(frozen=True)
+class _RenderCacheEntry:
+    size: int
+    bubble: FlexBubble | None
+    cost: int
+
+
+class _RenderSession:
+    """Reuse candidate sizes/layouts only for one conversion or split call.
+
+    Oversized bubbles cannot be outputs, so only retain their size. Bound source
+    keys and serialized layouts together; an entry limit bounds index overhead.
+    Eviction releases the source, size, and layout as one unit. Every exported
+    message receives its own mutable object tree.
+    """
+
+    _MAX_CACHED_BYTES = 8_000_000
+    _MAX_CACHED_ENTRIES = 1024
+
+    def __init__(self) -> None:
+        self.entries: OrderedDict[str, _RenderCacheEntry] = OrderedDict()
+        self.cached_bytes = 0
+
+    def _render(self, text: str) -> tuple[FlexBubble, int]:
+        bubble = _bubble(text)
+        size = _json_size(bubble)
+        retained = bubble if size <= _MAX_BUBBLE_BYTES else None
+        cost = getsizeof(text) + (size if retained is not None else 0)
+        previous = self.entries.pop(text, None)
+        if previous is not None:
+            self.cached_bytes -= previous.cost
+        if cost <= self._MAX_CACHED_BYTES and self._MAX_CACHED_ENTRIES > 0:
+            while self.entries and (
+                self.cached_bytes + cost > self._MAX_CACHED_BYTES
+                or len(self.entries) >= self._MAX_CACHED_ENTRIES
+            ):
+                _, oldest = self.entries.popitem(last=False)
+                self.cached_bytes -= oldest.cost
+            self.entries[text] = _RenderCacheEntry(size, retained, cost)
+            self.cached_bytes += cost
+        return bubble, size
+
+    def size(self, text: str) -> int:
+        cached = self.entries.get(text)
+        return cached.size if cached is not None else self._render(text)[1]
+
+    def message(self, text: str, alt_text: str | None) -> FlexMessage:
+        cached = self.entries.get(text)
+        bubble = cached.bubble if cached is not None else None
+        if bubble is None:
+            bubble, _ = self._render(text)
+        return {
+            "type": "flex",
+            "altText": _alt_text(text) if alt_text is None else alt_text,
+            "contents": deepcopy(bubble),
+        }
 
 
 def estimate_flex_payload_size(text: str) -> int:
@@ -105,11 +170,12 @@ def build_flex_message(text: str, *, alt_text: str | None = None) -> dict[str, A
         raise ValueError(
             "bubble exceeds 30,000 bytes; use convert_markdown_to_line_messages"
         )
-    return {
+    message: FlexMessage = {
         "type": "flex",
         "altText": _alt_text(text if alt_text is None else alt_text),
         "contents": bubble,
     }
+    return cast(dict[str, Any], message)
 
 
 def _validate_limits(max_length: int, max_payload_bytes: int) -> None:
@@ -141,13 +207,19 @@ def split_long_text(
     """
     _require_text(text)
     _validate_limits(max_length, max_payload_bytes)
+    return _split_long_text(text, max_length, max_payload_bytes, _RenderSession())
+
+
+def _split_long_text(
+    text: str, max_length: int, max_payload_bytes: int, session: _RenderSession
+) -> list[str]:
     if not text.strip():
         return []
 
     def fits(candidate: str) -> bool:
         return (
             len(candidate) <= max_length
-            and estimate_flex_payload_size(candidate) <= max_payload_bytes
+            and session.size(candidate) <= max_payload_bytes
         )
 
     def split_unit(
@@ -163,9 +235,13 @@ def split_long_text(
             if preserve_links
             else []
         )
+        links_by_start = dict(link_ranges)
+        link_starts = [start for start, _ in link_ranges]
 
         def safe_boundary(end: int) -> int:
-            for link_start, link_end in link_ranges:
+            index = bisect_right(link_starts, end) - 1
+            if index >= 0:
+                link_start, link_end = link_ranges[index]
                 if link_start < end < link_end:
                     return link_start
             return end
@@ -177,10 +253,9 @@ def split_long_text(
             if end <= start:
                 # Shrinking is conservative, and can jump past a whole link.
                 # Try that atomic token before declaring the budget impossible.
-                for link_start, link_end in link_ranges:
-                    if link_start == start and fits(wrap(body[start:link_end])):
-                        end = link_end
-                        break
+                link_end = links_by_start.get(start)
+                if link_end is not None and fits(wrap(body[start:link_end])):
+                    end = link_end
             if end <= start:
                 raise ValueError(
                     "limits are too small for a rendered fragment or intact link"
@@ -206,18 +281,11 @@ def split_long_text(
         return [text]
 
     chunks: list[str] = []
-    for segment in _CODE_FENCE_RE.split(text):
-        if not segment:
-            continue
-        if _CODE_FENCE_RE.fullmatch(segment) and "\n" in segment:
-            header, body = segment[:-3].split("\n", 1)
-            if body.endswith("\n"):
-                body = body[:-1]
-
-            def wrap_code(piece: str, opening: str = header) -> str:
-                return opening + "\n" + piece + "\n```"
-
-            chunks.extend(split_unit(body, wrap_code))
+    for fenced in iter_fenced_segments(text):
+        segment = fenced.text
+        if fenced.is_code:
+            fence = parse_code_fence(segment)
+            chunks.extend(split_unit(fence.body, fence.wrap))
         else:
             chunks.extend(split_unit(segment, lambda piece: piece, preserve_links=True))
 
@@ -252,9 +320,11 @@ def convert_markdown_to_line_messages(
     Empty input returns []. The caller manages LINE's five-message request
     limit and delivery. This function never truncates the message list.
     """
-    if alt_text is not None:
-        _alt_text(alt_text)
+    normalized_alt = _alt_text(alt_text) if alt_text is not None else None
+    _require_text(text)
+    _validate_limits(max_length, max_payload_bytes)
+    session = _RenderSession()
+    parts = _split_long_text(text, max_length, max_payload_bytes, session)
     return [
-        build_flex_message(part, alt_text=alt_text)
-        for part in split_long_text(text, max_length, max_payload_bytes)
+        cast(dict[str, Any], session.message(part, normalized_alt)) for part in parts
     ]
