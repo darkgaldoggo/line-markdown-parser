@@ -30,9 +30,9 @@ dependencies = []
 dev = ["pytest>=8", "ruff>=0.11", "build>=1.2", "twine>=6"]
 
 [project.urls]
-Homepage = "https://github.com/darkgaldragon/line-markdown-parser"
-Source = "https://github.com/darkgaldragon/line-markdown-parser"
-Issues = "https://github.com/darkgaldragon/line-markdown-parser/issues"
+Homepage = "https://github.com/darkgaldoggo/line-markdown-parser"
+Source = "https://github.com/darkgaldoggo/line-markdown-parser"
+Issues = "https://github.com/darkgaldoggo/line-markdown-parser/issues"
 
 [tool.setuptools]
 packages = ["line_markdown_parser"]
