@@ -7,6 +7,7 @@
 - Keep multiline emphasis intact when an inline code span contains delimiter characters.
 - Preserve adjacent links and links following multiline inline code; share code-fence body parsing with the splitter.
 - Separate syntax, URI policy, and Flex layout; reuse candidate layouts within each conversion.
+- Bound cached source strings as well as layouts, and preserve ordered-list continuations after an empty item marker.
 - Add strict type checking, cross-context and output-structure tests, and installed-wheel contract checks.
 - GitHubアカウント名変更に伴いプロジェクトURLを更新（#10）。
 

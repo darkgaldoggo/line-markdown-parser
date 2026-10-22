@@ -11,6 +11,8 @@ from bisect import bisect_right
 from collections import OrderedDict
 from collections.abc import Callable
 from copy import deepcopy
+from dataclasses import dataclass
+from sys import getsizeof
 from typing import Any, cast
 
 from ._flex import FlexBubble, FlexComponent, FlexMessage
@@ -70,43 +72,57 @@ def _json_size(value: object) -> int:
     )
 
 
+@dataclass(frozen=True)
+class _RenderCacheEntry:
+    size: int
+    bubble: FlexBubble | None
+    cost: int
+
+
 class _RenderSession:
     """Reuse candidate sizes/layouts only for one conversion or split call.
 
-    Oversized bubbles cannot be outputs, so only retain their size. Cap retained
-    layouts by serialized bytes; size entries remain cheap even after eviction.
-    Every exported message receives its own mutable object tree.
+    Oversized bubbles cannot be outputs, so only retain their size. Bound source
+    keys and serialized layouts together; an entry limit bounds index overhead.
+    Eviction releases the source, size, and layout as one unit. Every exported
+    message receives its own mutable object tree.
     """
 
     _MAX_CACHED_BYTES = 8_000_000
+    _MAX_CACHED_ENTRIES = 1024
 
     def __init__(self) -> None:
-        self.sizes: dict[str, int] = {}
-        self.bubbles: OrderedDict[str, FlexBubble] = OrderedDict()
+        self.entries: OrderedDict[str, _RenderCacheEntry] = OrderedDict()
         self.cached_bytes = 0
 
-    def _render(self, text: str) -> FlexBubble:
+    def _render(self, text: str) -> tuple[FlexBubble, int]:
         bubble = _bubble(text)
         size = _json_size(bubble)
-        self.sizes[text] = size
-        if size <= _MAX_BUBBLE_BYTES:
-            while self.bubbles and self.cached_bytes + size > self._MAX_CACHED_BYTES:
-                oldest, _ = self.bubbles.popitem(last=False)
-                self.cached_bytes -= self.sizes[oldest]
-            if size <= self._MAX_CACHED_BYTES:
-                self.bubbles[text] = bubble
-                self.cached_bytes += size
-        return bubble
+        retained = bubble if size <= _MAX_BUBBLE_BYTES else None
+        cost = getsizeof(text) + (size if retained is not None else 0)
+        previous = self.entries.pop(text, None)
+        if previous is not None:
+            self.cached_bytes -= previous.cost
+        if cost <= self._MAX_CACHED_BYTES and self._MAX_CACHED_ENTRIES > 0:
+            while self.entries and (
+                self.cached_bytes + cost > self._MAX_CACHED_BYTES
+                or len(self.entries) >= self._MAX_CACHED_ENTRIES
+            ):
+                _, oldest = self.entries.popitem(last=False)
+                self.cached_bytes -= oldest.cost
+            self.entries[text] = _RenderCacheEntry(size, retained, cost)
+            self.cached_bytes += cost
+        return bubble, size
 
     def size(self, text: str) -> int:
-        if text not in self.sizes:
-            self._render(text)
-        return self.sizes[text]
+        cached = self.entries.get(text)
+        return cached.size if cached is not None else self._render(text)[1]
 
     def message(self, text: str, alt_text: str | None) -> FlexMessage:
-        bubble = self.bubbles.get(text)
+        cached = self.entries.get(text)
+        bubble = cached.bubble if cached is not None else None
         if bubble is None:
-            bubble = self._render(text)
+            bubble, _ = self._render(text)
         return {
             "type": "flex",
             "altText": _alt_text(text) if alt_text is None else alt_text,

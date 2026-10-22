@@ -107,7 +107,7 @@ def _allows_multiline_inline_continuation(line: str) -> bool:
         return False
     if _UNORDERED_LIST_MATCH_RE.match(line):
         return False
-    if re.match("^(\\s*)(\\d+)([.)])\\s+(.*)", line):
+    if _ORDERED_LIST_START_RE.match(line):
         return False
     if re.match("^\\s+.+", line):
         return False
@@ -186,6 +186,7 @@ def _task_list_prefix(raw_list_item_text: str) -> tuple[str, str]:
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)")
 _SEPARATOR_RE = re.compile(r"^(\s*)(?:[-‐]{3,}|\*{3,}|_{3,})\s*$")
+_ORDERED_LIST_START_RE = re.compile(r"^(\s*)(\d+)([.)])\s+(.*)")
 _ORDERED_LIST_RE = re.compile(r"^(\s*)(\d+)([.)])\s+([\s\S]+)")
 
 
@@ -203,7 +204,7 @@ def _normalize_lines(segment: str) -> list[str]:
         separator = _SEPARATOR_RE.match(stripped)
         is_list = bool(
             (_UNORDERED_LIST_MATCH_RE.match(line) if not separator else None)
-            or _ORDERED_LIST_RE.match(line)
+            or _ORDERED_LIST_START_RE.match(line)
         )
         if (
             not is_list

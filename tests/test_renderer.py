@@ -46,6 +46,23 @@ def _span_with_text(contents, text):
     )
 
 
+@pytest.mark.parametrize("marker", [".", ")"])
+@pytest.mark.parametrize("whitespace", [" ", "  ", "\t"])
+def test_empty_ordered_item_body_accepts_an_indented_continuation(marker, whitespace):
+    source = f"Introduction\n\n1{marker}{whitespace}\n   continuation\n2{marker} next"
+    expected = build_flex_contents(
+        f"Introduction\n\n1{marker} continuation\n2{marker} next"
+    )
+    assert build_flex_contents(source) == expected
+
+
+@pytest.mark.parametrize("marker", [".", ")"])
+def test_empty_ordered_marker_without_continuation_remains_text(marker):
+    contents = build_flex_contents(f"Introduction\n\n1{marker} \n\nEnd")
+    assert _span_with_text(contents, f"1{marker}")
+    assert not any(node.get("layout") == "horizontal" for node in _walk(contents))
+
+
 def test_inline_markdown_renders_as_flex_spans():
     contents = build_flex_contents("`code` *italic* **bold** ***both*** ~~gone~~")
 

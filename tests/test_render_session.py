@@ -2,6 +2,7 @@
 
 from collections import Counter
 from copy import deepcopy
+from sys import getsizeof
 
 import pytest
 from flex_assertions import assert_message
@@ -93,3 +94,48 @@ def test_revisited_chunks_after_eviction_keep_output_and_ownership(
     assert calls[units[0]] > 1
     actual[0]["contents"]["body"]["contents"].clear()
     assert actual[6] == expected[6]
+
+
+@pytest.mark.parametrize("prefix", ["item", "字🙂"])
+def test_splitting_bounds_retained_source_keys_and_entry_count(monkeypatch, prefix):
+    observations = []
+
+    class ObservedSession(converter._RenderSession):
+        _MAX_CACHED_BYTES = 24_000
+        _MAX_CACHED_ENTRIES = 32
+
+        def _render(self, text):
+            result = super()._render(text)
+            observations.append(
+                (sum(getsizeof(key) for key in self.entries), len(self.entries))
+            )
+            return result
+
+    monkeypatch.setattr(converter, "_RenderSession", ObservedSession)
+    source = "".join(f"{prefix}{index:04x}" for index in range(1200))
+    parts = split_long_text(source, max_length=200_000, max_payload_bytes=700)
+    assert "".join(parts) == source
+    assert len(observations) > 100
+    assert max(size for size, _ in observations) <= 24_000
+    assert max(count for _, count in observations) <= 32
+    assert all(converter.estimate_flex_payload_size(part) <= 700 for part in parts)
+
+
+def test_size_larger_than_cache_capacity_is_returned_without_retention(monkeypatch):
+    monkeypatch.setattr(converter._RenderSession, "_MAX_CACHED_BYTES", 100)
+    source = "large source " * 100
+    session = converter._RenderSession()
+    assert session.size(source) == converter.estimate_flex_payload_size(source)
+    assert not session.entries
+    assert session.cached_bytes == 0
+
+
+def test_oversized_layout_retains_only_a_bounded_source_and_size(monkeypatch):
+    monkeypatch.setattr(converter._RenderSession, "_MAX_CACHED_ENTRIES", 2)
+    session = converter._RenderSession()
+    for index in range(5):
+        source = f"{index}" + "word " * 7000
+        assert session.size(source) > 30_000
+        assert session.entries[source].bubble is None
+        assert len(session.entries) <= 2
+    assert len(session.entries) == 2
