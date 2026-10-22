@@ -19,6 +19,7 @@ jobs:
       - run: python -m pip install -e '.[dev]'
       - run: ruff check .
       - run: ruff format --check .
+      - run: python -m mypy
       - run: python scripts/check_public_artifacts.py
 
   unit:
@@ -37,22 +38,23 @@ jobs:
       - run: python -m pytest -q
 
   build:
+    name: Wheel Python ${{ matrix.python }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.14']
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
+          python-version: ${{ matrix.python }}
       - run: python -m pip install build twine
       - run: python -m build
       - run: python -m twine check dist/*
       - run: python scripts/check_public_artifacts.py --dist dist
-      - name: Install and exercise the wheel outside the checkout
-        run: |
-          python -m venv /tmp/wheel-check
-          /tmp/wheel-check/bin/pip install --no-deps dist/*.whl
-          cd /tmp
-          /tmp/wheel-check/bin/python -c 'from line_markdown_parser import convert_markdown_to_line_messages as convert; assert convert("**Hello**")[0]["type"] == "flex"'
+      - name: Run the installed-wheel contract suite outside the checkout
+        run: python scripts/check_wheel.py dist/*.whl
 
   required:
     name: test

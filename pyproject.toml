@@ -5,7 +5,7 @@ backend-path = ["."]
 
 [project]
 name = "line-markdown-parser"
-version = "0.1.4"
+version = "0.1.5"
 description = "Convert LLM Markdown into readable LINE Flex Messages without runtime dependencies."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -27,7 +27,7 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.11", "build>=1.2", "twine>=6"]
+dev = ["pytest>=8", "ruff>=0.11", "mypy>=1.15", "build>=1.2", "twine>=6"]
 
 [project.urls]
 Homepage = "https://github.com/darkgaldoggo/line-markdown-parser"
@@ -42,6 +42,11 @@ line_markdown_parser = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+files = ["line_markdown_parser", "scripts"]
+python_version = "3.10"
+strict = true
 
 [tool.ruff]
 target-version = "py310"

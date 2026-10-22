@@ -47,15 +47,16 @@ print("ok")
         input=json.dumps([function_name, source]),
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
         timeout=15,
     )
+    assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"
 
 
 def test_link_scanning_does_not_rescan_later_destinations():
     script = """
-from line_markdown_parser._renderer import _iter_links
+from line_markdown_parser._syntax import _iter_links
 
 for unit, count in (("[A](https://example.com),", 8000), ("[x](urn:item)", 15000)):
     assert len(list(_iter_links(unit * count))) == count
@@ -65,9 +66,10 @@ print("ok")
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,
-        check=True,
+        check=False,
         timeout=15,
     )
+    assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == "ok"
 
 
@@ -94,3 +96,38 @@ def test_multiline_emphasis_has_no_short_lookahead_limit():
 def test_multiline_emphasis_does_not_cross_block_boundaries(boundary):
     contents = build_flex_contents(f"*start\n{boundary}\nend*")
     assert not any(span.get("style") == "italic" for span in _spans(contents))
+
+
+def test_unclosed_html_tags_are_bounded_at_every_public_entry_point():
+    script = r"""
+import line_markdown_parser as parser
+
+for tag in ("b", "strong", "em", "i", "s", "del"):
+    unit = f"<{tag}>"
+    source = unit * (180_000 // len(unit))
+    contents = parser.build_flex_contents(source)
+    assert contents
+    assert parser.estimate_flex_payload_size(source) > 30_000
+    try:
+        parser.build_flex_message(source)
+    except ValueError as error:
+        assert "30,000" in str(error)
+    else:
+        raise AssertionError("oversized message accepted")
+    parts = parser.split_long_text(source, max_length=200_000)
+    assert "".join(parts) == source
+    messages = parser.convert_markdown_to_line_messages(source, max_length=200_000)
+    assert len(messages) == len(parts) > 1
+# An incomplete opening tag must not trigger repeated searches for its > either.
+assert parser.build_flex_contents("<b" * 90_000)
+print("ok")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"

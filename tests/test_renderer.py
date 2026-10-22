@@ -853,3 +853,15 @@ print("ok")
         timeout=15,
     )
     assert result.stdout.strip() == "ok"
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    ["https://example.org/path", "https://example.org/?q=", "https://example.org/#"],
+)
+def test_markdown_looking_text_in_url_components_remains_in_the_destination(prefix):
+    source = prefix + "[A](https://example.com)"
+    contents = build_flex_contents(source)
+    assert [
+        node["action"]["uri"] for node in _walk(contents) if node.get("action")
+    ] == [prefix + "%5BA%5D(https://example.com)"]

@@ -18,11 +18,17 @@ Run these checks before opening a pull request:
 python -m pytest -q
 python -m ruff check .
 python -m ruff format --check .
+python -m mypy
 python scripts/check_public_artifacts.py
 python -m build
 python -m twine check dist/*
 python scripts/check_public_artifacts.py --dist dist
+python scripts/check_wheel.py dist/*.whl
 ```
+
+The wheel check installs the wheel and pytest in a temporary environment, then runs the core contract suite outside the checkout. It requires access to the configured Python package index.
+
+Parsing lives in `_syntax`, `_inline`, and `_blocks`; URI policy in `_uri`; Flex layout in `_inline_renderer` and `_renderer`. Keep syntax information in typed tokens and layout properties in Flex components. When adding a package module, update the distribution allowlist in `scripts/check_public_artifacts.py`.
 
 ## Issues and pull requests
 

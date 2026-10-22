@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.5 — 2026-10-22
+
+- Avoid repeated suffix scans for unclosed inline HTML emphasis tags.
+- Make heading links clickable through shared inline parsing.
+- Keep multiline emphasis intact when an inline code span contains delimiter characters.
+- Preserve adjacent links and links following multiline inline code; share code-fence body parsing with the splitter.
+- Separate syntax, URI policy, and Flex layout; reuse candidate layouts within each conversion.
+- Add strict type checking, cross-context and output-structure tests, and installed-wheel contract checks.
+- GitHubアカウント名変更に伴いプロジェクトURLを更新（#10）。
+
 ## 0.1.4 — 2026-10-18
 
 - Clarify the conversion logic's use in a running LINE bot and integration guidance.
