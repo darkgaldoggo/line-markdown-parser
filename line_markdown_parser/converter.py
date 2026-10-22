@@ -53,13 +53,17 @@ def _body_contents(text: str) -> list[FlexComponent]:
 
 
 def _bubble(text: str) -> FlexBubble:
+    contents = _body_contents(text)
+    if contents:
+        # Block margins separate siblings; the outer padding defines the inset.
+        contents[0]["margin"] = "none"
     return {
         "type": "bubble",
         "size": "giga",
         "body": {
             "type": "box",
             "layout": "vertical",
-            "contents": _body_contents(text),
+            "contents": contents,
             "paddingAll": "16px",
             "backgroundColor": "#FFFFFF",
         },

@@ -31,6 +31,8 @@ estimate_flex_payload_size(text) -> int
 
 Every call returns fresh mutable dictionaries; modifying one message does not affect other messages or later calls. Candidate layouts may be reused within a call, but input and output are not cached across calls. Visual properties and exact component nesting may change without changing this contract.
 
+Standalone bubbles use equal outer padding and no leading margin on their first body component. Spacing between blocks is preserved. `build_flex_contents` returns block margins unchanged so applications can compose their own containers.
+
 ## Limits and splitting
 
 - `max_length` is a positive integer measured in Python string characters. It is a source-length limit, not a LINE API character limit.
