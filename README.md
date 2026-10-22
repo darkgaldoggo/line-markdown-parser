@@ -2,7 +2,7 @@
 
 Convert LLM Markdown into readable LINE Flex Message dictionaries with no runtime dependencies.
 
-[日本語](https://github.com/darkgaldragon/line-markdown-parser/blob/main/README-ja.md)
+[日本語](https://github.com/darkgaldoggo/line-markdown-parser/blob/main/README-ja.md)
 
 The library builds on conversion logic refined through ongoing use in a LINE bot.
 
@@ -51,7 +51,7 @@ All functions are exported from `line_markdown_parser`.
 | `split_long_text` | Return Markdown chunks as a `list[str]`. |
 | `estimate_flex_payload_size` | Measure the rendered bubble's compact UTF-8 JSON size. |
 
-The converter defaults to 1,600 source characters and 28,000 rendered bytes per chunk. See the [API specification](https://github.com/darkgaldragon/line-markdown-parser/blob/main/docs/spec.md) for signatures, limits, alternative text, and error behavior.
+The converter defaults to 1,600 source characters and 28,000 rendered bytes per chunk. See the [API specification](https://github.com/darkgaldoggo/line-markdown-parser/blob/main/docs/spec.md) for signatures, limits, alternative text, and error behavior.
 
 ## Limitations
 
@@ -63,8 +63,8 @@ The converter defaults to 1,600 source characters and 28,000 rendered bytes per 
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/darkgaldragon/line-markdown-parser/blob/main/CONTRIBUTING.md) for setup and checks, [SECURITY.md](https://github.com/darkgaldragon/line-markdown-parser/blob/main/SECURITY.md) for vulnerability reporting, and [CHANGELOG.md](https://github.com/darkgaldragon/line-markdown-parser/blob/main/CHANGELOG.md) for release history.
+See [CONTRIBUTING.md](https://github.com/darkgaldoggo/line-markdown-parser/blob/main/CONTRIBUTING.md) for setup and checks, [SECURITY.md](https://github.com/darkgaldoggo/line-markdown-parser/blob/main/SECURITY.md) for vulnerability reporting, and [CHANGELOG.md](https://github.com/darkgaldoggo/line-markdown-parser/blob/main/CHANGELOG.md) for release history.
 
 ## License
 
-[MIT](https://github.com/darkgaldragon/line-markdown-parser/blob/main/LICENSE). This independent project is not an official LINE product.
+[MIT](https://github.com/darkgaldoggo/line-markdown-parser/blob/main/LICENSE). This independent project is not an official LINE product.
