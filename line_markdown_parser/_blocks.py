@@ -69,6 +69,8 @@ def is_char_emoji(char: str) -> bool:
 def _ends_with_markdown_hard_break(text: str) -> bool:
     """末尾行が Markdown のハード改行マーカー（末尾2スペース / <br>）で終わるか判定する。"""
     last_line = text.split("\n")[-1]
+    if marker := _LIST_ITEM_MARKER_RE.match(last_line):
+        last_line = marker.group("text")
     return bool(_MARKDOWN_HARD_BREAK_RE.search(last_line))
 
 
@@ -187,7 +189,7 @@ def _task_list_prefix(raw_list_item_text: str) -> tuple[str, str]:
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)")
 _SEPARATOR_RE = re.compile(r"^(\s*)(?:[-‐]{3,}|\*{3,}|_{3,})\s*$")
 _ORDERED_LIST_START_RE = re.compile(r"^(\s*)(\d+)([.)])\s+(.*)")
-_ORDERED_LIST_RE = re.compile(r"^(\s*)(\d+)([.)])\s+([\s\S]+)")
+_ORDERED_LIST_RE = re.compile(r"^(\s*)(\d+)([.)])\s+(\S[\s\S]*)")
 
 
 def _normalize_lines(segment: str) -> list[str]:
