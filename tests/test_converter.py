@@ -28,6 +28,44 @@ def test_messages_are_plain_json_without_delivery_metadata():
     assert "postback" not in json.dumps(messages)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "A short paragraph.",
+        "# Heading\n\nBody.",
+        "- First\n- Second",
+        "> Quoted text.",
+        "```python\nprint(1)\n```",
+        "---",
+    ],
+)
+def test_standalone_bubble_has_balanced_outer_insets(text):
+    body = build_flex_message(text)["contents"]["body"]
+    assert body["paddingAll"] == "16px"
+    assert body["contents"][0]["margin"] == "none"
+
+
+def test_bubble_inset_normalization_preserves_interblock_and_raw_margins():
+    text = "First paragraph.\n\nSecond paragraph."
+    raw = build_flex_contents(text)
+    body = build_flex_message(text)["contents"]["body"]
+    assert raw[0]["margin"] == "md"
+    assert body["contents"][1:] == raw[1:]
+    assert body["contents"][-1]["margin"] == "md"
+    assert build_flex_contents(text) == raw
+
+
+def test_split_bubbles_each_have_balanced_outer_insets():
+    messages = convert_markdown_to_line_messages(
+        "A paragraph for splitting.\n\n" * 20, max_length=80
+    )
+    assert len(messages) > 1
+    for message in messages:
+        body = message["contents"]["body"]
+        assert body["paddingAll"] == "16px"
+        assert body["contents"][0]["margin"] == "none"
+
+
 @pytest.mark.parametrize("text", ["", " ", "\n\t"])
 def test_empty_input(text):
     assert convert_markdown_to_line_messages(text) == []

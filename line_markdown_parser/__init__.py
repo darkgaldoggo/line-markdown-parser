@@ -9,7 +9,7 @@ from .converter import (
     split_long_text,
 )
 
-__version__ = "0.1.5"
+__version__ = "0.1.6"
 __all__ = [
     "DEFAULT_MAX_FLEX_PAYLOAD_BYTES",
     "build_flex_contents",

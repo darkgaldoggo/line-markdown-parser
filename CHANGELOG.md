@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.6 — 2026-10-23
+
+- Balance standalone bubble insets by removing the first block's leading margin, including after long-message splitting. Keep spacing between blocks and raw body-component output unchanged.
+
 ## 0.1.5 — 2026-10-22
 
 - Avoid repeated suffix scans for unclosed inline HTML emphasis tags.
